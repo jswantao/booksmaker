@@ -151,10 +151,10 @@ class TranslationMemory:
                 metadata = results['metadatas'][0][i] if results['metadatas'] else {}
                 document = results['documents'][0][i] if results['documents'] else ""
                 matches.append({
-                    'source': document, 'target': metadata.get('target', ''),
+                    'source': document[:400], 'target': metadata.get('target', '')[:400],
                     'similarity': round(similarity, 4),
                     'use_count': use_count_map.get(doc_id, 1),
-                    'context': metadata.get('context', '')})
+                    'context': metadata.get('context', '')[:100]})
             matches.sort(key=lambda x: x['similarity'], reverse=True)
             return matches[:n_results]
         except Exception as e:

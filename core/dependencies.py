@@ -43,21 +43,28 @@ def sync_llm_manager():
     provider_type = user_api_config.get("llm_provider", "openai")
 
     if provider_type == "local":
-        translate_model = user_api_config.get("local_translate_model", "Qwen/Qwen2.5-1.5B-Instruct")
+        translate_model = user_api_config.get("local_translate_model", "Qwen/Qwen2-7B-Instruct-GPTQ-Int4")
         epub_model = user_api_config.get("local_epub_model", "") or translate_model
+        load_in_4bit = user_api_config.get("local_load_in_4bit", True)
+        load_in_8bit = user_api_config.get("local_load_in_8bit", False)
 
         from model_providers import TransformersLLMProvider
-        trans_provider = TransformersLLMProvider(translate_model, load_in_8bit=False)
+        trans_provider = TransformersLLMProvider(translate_model,
+                                                  load_in_8bit=load_in_8bit,
+                                                  load_in_4bit=load_in_4bit)
         manager.set_provider("translate", trans_provider)
         manager.set_provider("default", trans_provider)
 
         if epub_model != translate_model:
-            epub_provider = TransformersLLMProvider(epub_model, load_in_8bit=False)
+            epub_provider = TransformersLLMProvider(epub_model,
+                                                     load_in_8bit=load_in_8bit,
+                                                     load_in_4bit=load_in_4bit)
             manager.set_provider("epub", epub_provider)
         else:
             manager.set_provider("epub", trans_provider)
 
-        print(f"LLM provider: Local (translate={translate_model}, epub={epub_model}, FP16)")
+        mode = "4-bit GPTQ" if load_in_4bit else ("8-bit" if load_in_8bit else "FP16")
+        print(f"LLM provider: Local (translate={translate_model}, epub={epub_model}, {mode})")
     else:
         if not user_api_config.get("api_key"):
             print("LLM provider: OpenAI (no API key configured)")

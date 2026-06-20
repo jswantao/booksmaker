@@ -61,10 +61,7 @@ const TASK_CONFIGS = {
             return [{ el: $('epubInput'), message: '请输入内容' }];
         },
         buildBody(inputs) {
-            const useRag = $('epubRag')?.checked ?? true;
-            const body = { content: inputs[0].el.value.trim(), user_epub_code: null, use_rag: useRag };
-            if (useRag) addRagParams(body, 'epub', AppState.selectedEpubKbs);
-            return body;
+            return { content: inputs[0].el.value.trim(), user_epub_code: null };
         },
         renderSuccess(result) { renderEpubOutput(result, 'epubOutput'); }
     },
@@ -82,14 +79,10 @@ const TASK_CONFIGS = {
             ];
         },
         buildBody(inputs) {
-            const useRag = $('epubRag')?.checked ?? true;
-            const body = {
+            return {
                 translation: inputs[0].el.value.trim(),
                 epub_code: inputs[1].el.value.trim(),
-                use_rag: useRag
             };
-            if (useRag) addRagParams(body, 'epub', AppState.selectedEpubKbs);
-            return body;
         },
         renderSuccess(result) { renderEpubOutput(result, 'replaceOutput'); }
     }

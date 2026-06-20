@@ -152,3 +152,62 @@ export function uploadKnowledge(agentName, formData) {
         body: formData
     }).then(r => r.json());
 }
+
+// ---- Pipeline API ----
+export function pipelineUpload(formData) {
+    return fetch(API_PATH.pipelineUpload, {
+        method: 'POST',
+        body: formData
+    }).then(r => r.json());
+}
+
+export function pipelineBuildKb(filePath, kbName, chunkSize, overlap) {
+    return fetchAPI(API_PATH.pipelineBuildKb, {
+        file_path: filePath, kb_name: kbName,
+        chunk_size: chunkSize || 1200, overlap: overlap || 150
+    });
+}
+
+export function pipelineRun(filePath, kbName, memoryPath, resumeFrom, autoSaveInterval) {
+    return fetchAPI(API_PATH.pipelineRun, {
+        file_path: filePath, kb_name: kbName,
+        memory_path: memoryPath || '',
+        resume_from: resumeFrom || 0,
+        auto_save_interval: autoSaveInterval || 10
+    });
+}
+
+export function pipelinePause(kbName) {
+    return fetchAPI(API_PATH.pipelinePause + '/' + encodeURIComponent(kbName), {});
+}
+
+export function pipelineResume(kbName) {
+    return fetchAPI(API_PATH.pipelineResume + '/' + encodeURIComponent(kbName), {});
+}
+
+export function pipelineStatus(kbName) {
+    return fetchGET(API_PATH.pipelineStatus + '/' + encodeURIComponent(kbName));
+}
+
+export function pipelineResult(kbName) {
+    return fetchGET(API_PATH.pipelineResult + '/' + encodeURIComponent(kbName));
+}
+
+export function pipelineGetMemory(memoryPath) {
+    return fetchGET(API_PATH.pipelineMemory + '/' + encodeURIComponent(memoryPath));
+}
+
+export function pipelineInitMemory(memoryPath, project, terminology) {
+    return fetchAPI(API_PATH.pipelineMemoryInit, {
+        memory_path: memoryPath, project: project || '',
+        terminology: terminology || null
+    });
+}
+
+export function pipelineStitch(memoryPath) {
+    return fetchAPI(API_PATH.pipelineStitch, { memory_path: memoryPath });
+}
+
+export function pipelineListKbs() {
+    return fetchGET(API_PATH.pipelineKbs);
+}

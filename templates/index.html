@@ -825,6 +825,7 @@
     <div class="main-tabs" role="tablist" aria-label="主功能标签">
         <button type="button" class="active" data-maintab="workspace" data-action="switch-main-tab" data-param="workspace" role="tab" aria-selected="true">📝 翻译工作台</button>
         <button type="button" data-maintab="kbmanager" data-action="switch-main-tab" data-param="kbmanager" role="tab" aria-selected="false">📚 知识库管理</button>
+        <button type="button" data-maintab="pipeline" data-action="switch-main-tab" data-param="pipeline" role="tab" aria-selected="false">📋 翻译流水线</button>
     </div>
 
     <!-- ===== 翻译工作台 ===== -->
@@ -853,7 +854,7 @@
                 <label>LLM 提供者</label>
                 <select id="llmProvider" data-change="llm-provider" class="config-select">
                     <option value="openai">OpenAI API</option>
-                    <option value="local">本地模型 (Qwen2.5-1.5B)</option>
+                    <option value="local">本地模型 (Qwen2-7B-GPTQ)</option>
                 </select>
             </div>
             <div id="openaiModelGroup">
@@ -862,7 +863,7 @@
             </div>
             <div id="localModelConfig" style="display:none;">
                 <label>本地翻译模型</label>
-                <input type="text" id="localTranslateModel" placeholder="Qwen/Qwen2.5-1.5B-Instruct" value="Qwen/Qwen2.5-1.5B-Instruct">
+                <input type="text" id="localTranslateModel" placeholder="Qwen/Qwen2-7B-Instruct-GPTQ-Int4" value="Qwen/Qwen2-7B-Instruct-GPTQ-Int4">
                 <label style="margin-top:10px;">本地 EPUB 模型（留空则复用翻译模型）</label>
                 <input type="text" id="localEpubModel" placeholder="留空 = 复用翻译模型">
             </div>
@@ -910,6 +911,17 @@
                     <option value="">按分组: 全部知识库</option>
                 </select>
                 <div class="selected-tags" id="translateKbTags"></div>
+            </div>
+            <div id="ragSearchSettings" class="rag-settings" style="margin-top:6px; font-size:0.8rem; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <label>检索方式:
+                    <select id="ragSearchMode" style="font-size:0.8rem;padding:3px 6px;border-radius:4px;">
+                        <option value="hybrid">混合检索 (推荐)</option>
+                        <option value="vector">纯语义</option>
+                        <option value="keyword">纯关键词</option>
+                    </select>
+                </label>
+                <label>TopK: <input type="number" id="ragTopK" value="3" min="1" max="10" style="width:50px;font-size:0.8rem;padding:3px;"></label>
+                <label>阈值: <input type="number" id="ragThreshold" value="0.3" min="0" max="1" step="0.05" style="width:55px;font-size:0.8rem;padding:3px;"></label>
             </div>
 
             <div class="btn-group">
@@ -973,21 +985,6 @@
                 <div id="replaceOutput" class="output-box"></div>
             </div>
 
-            <div class="rag-section">
-                <label><input type="checkbox" id="epubRag" checked data-change="toggle-kb-selector" data-param="epub"> 启用RAG知识库</label>
-                <div id="epubKbSelector" class="kb-selector">
-                    <select id="epubGroupSelect" data-change="group-select" data-param="epub">
-                        <option value="">按分组: 全部知识库</option>
-                    </select>
-                    <div class="selected-tags" id="epubKbTags"></div>
-                </div>
-                <div class="file-upload">
-                    <span class="section-label">上传知识文档：</span>
-                    <input type="file" id="epubKnowledgeFile" accept=".txt,.md,.xml">
-                    <button type="button" class="btn btn-secondary" data-action="upload-knowledge" data-param="EPUB编辑">上传</button>
-                </div>
-                <div id="epubKnowledgeList" class="knowledge-list"></div>
-            </div>
         </div>
     </div>
 
@@ -1049,6 +1046,104 @@
         </div>
     </div>
 </div><!-- end maintab-kbmanager -->
+
+<!-- ===== 翻译流水线 ===== -->
+<div id="maintab-pipeline" class="maintab-content" role="tabpanel">
+    <div class="dashboard">
+        <!-- 左侧：配置与执行 -->
+        <div class="card">
+            <h2>📋 流水线配置 <span class="agent-badge">本地翻译</span></h2>
+            <div class="subtitle">上传文档 → 构建知识库 → 分段翻译 → 章节缝合</div>
+
+            <!-- 步骤1：上传文件 -->
+            <div style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
+                <h4 style="margin-bottom: 8px;">📄 步骤 1：上传历史专著</h4>
+                <div class="file-upload">
+                    <input type="file" id="pipelineFile" accept=".txt,.md,.pdf">
+                    <button type="button" class="btn btn-secondary" data-action="pipeline-upload">上传文件</button>
+                </div>
+                <div id="pipelineUploadStatus" class="status" style="margin-top: 8px;"></div>
+                <input type="hidden" id="pipelineFilePath">
+            </div>
+
+            <!-- 步骤2：构建知识库 -->
+            <div style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
+                <h4 style="margin-bottom: 8px;">📚 步骤 2：构建知识库</h4>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <input type="text" id="pipelineKbName" class="text-input" placeholder="知识库名称" style="flex:1; min-width:160px;">
+                    <label style="font-size:0.85rem;">分块大小: <input type="number" id="pipelineChunkSize" value="1200" min="500" max="3000" style="width:70px;padding:6px;"></label>
+                    <label style="font-size:0.85rem;">重叠: <input type="number" id="pipelineOverlap" value="150" min="50" max="500" style="width:60px;padding:6px;"></label>
+                    <button type="button" class="btn btn-secondary" data-action="pipeline-build-kb">构建知识库</button>
+                </div>
+                <div id="pipelineBuildStatus" class="status" style="margin-top: 8px;"></div>
+            </div>
+
+            <!-- 步骤3：运行流水线 -->
+            <div style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);">
+                <h4 style="margin-bottom: 8px;">🚀 步骤 3：运行翻译流水线</h4>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <label style="font-size:0.85rem;">记忆库路径: <input type="text" id="pipelineMemoryPath" class="text-input" placeholder="自动生成" style="width:180px;"></label>
+                    <label style="font-size:0.85rem;">自动保存间隔: <input type="number" id="pipelineAutoSave" value="10" min="1" max="50" style="width:55px;padding:6px;"></label>
+                    <button type="button" class="btn" data-action="pipeline-run">▶ 开始翻译</button>
+                    <button type="button" class="btn btn-warning" data-action="pipeline-pause">⏸ 暂停</button>
+                    <button type="button" class="btn btn-secondary" data-action="pipeline-resume">▶ 恢复</button>
+                </div>
+                <div id="pipelineRunStatus" class="status" style="margin-top: 8px;"></div>
+            </div>
+
+            <!-- 步骤4：章节缝合 -->
+            <div>
+                <h4 style="margin-bottom: 8px;">🧵 步骤 4：章节缝合</h4>
+                <button type="button" class="btn btn-success" data-action="pipeline-stitch">执行章节缝合</button>
+                <div id="pipelineStitchStatus" class="status" style="margin-top: 8px;"></div>
+            </div>
+        </div>
+
+        <!-- 右侧：进度与输出 -->
+        <div class="card">
+            <h2>📊 流水线状态</h2>
+            <div class="subtitle">实时进度、记忆库状态与翻译输出</div>
+
+            <div style="display:flex; gap:12px; margin-bottom: 16px;">
+                <button type="button" class="btn btn-secondary btn-sm" data-action="pipeline-refresh-status">🔄 刷新状态</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-action="pipeline-clear">🗑 清空</button>
+            </div>
+
+            <!-- 进度条 -->
+            <div id="pipelineProgress" style="margin-bottom: 16px;">
+                <div style="background:var(--border); border-radius:10px; height:10px; overflow:hidden;">
+                    <div id="pipelineProgressBar" style="background:linear-gradient(135deg, var(--gradient-from), var(--gradient-to)); height:100%; width:0%; border-radius:10px; transition: width 0.5s;"></div>
+                </div>
+                <div id="pipelineProgressText" style="font-size:0.85rem; color:var(--text-secondary); margin-top:4px; text-align:center;">0 / 0 段</div>
+            </div>
+
+            <!-- 状态面板 -->
+            <div id="pipelineStatusPanel" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px; font-size:0.85rem;">
+                <div style="background:var(--output-bg); padding:8px 12px; border-radius:8px;">
+                    <strong>状态：</strong><span id="pipeStatus">待启动</span>
+                </div>
+                <div style="background:var(--output-bg); padding:8px 12px; border-radius:8px;">
+                    <strong>术语：</strong><span id="pipeTerms">0</span> 条
+                </div>
+                <div style="background:var(--output-bg); padding:8px 12px; border-radius:8px;">
+                    <strong>已完成章节：</strong><span id="pipeChapters">0</span>
+                </div>
+                <div style="background:var(--output-bg); padding:8px 12px; border-radius:8px;">
+                    <strong>核心论点：</strong><span id="pipeArgs">0</span> 条
+                </div>
+            </div>
+
+            <!-- 译文输出 -->
+            <div style="font-weight:600; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                <span>📝 翻译输出</span>
+                <button type="button" class="copy-btn" data-action="copy-output" data-param="pipelineOutput">📋 复制</button>
+            </div>
+            <div id="pipelineOutput" class="output-box" style="max-height:400px;">
+                <div class="empty-state">上传文件并启动流水线后，翻译结果将在此显示</div>
+            </div>
+        </div>
+    </div>
+</div><!-- end maintab-pipeline -->
 
 <!-- KB/Group 模态框 -->
 <div id="kbModalOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="kbModalTitle">

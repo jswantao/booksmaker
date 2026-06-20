@@ -6,6 +6,7 @@ import { loadConfig, saveConfig, clearConfig, toggleApiConfig, onEmbeddingProvid
 import { submitTask } from './modules/translator.js';
 import { getClickHandlers, getChangeHandlers, refreshKBManager, refreshKbSelectors } from './modules/kb-manager.js';
 import { refreshTm, deleteTm, clearTm, searchTm, addTmPair, refreshKnowledge, scheduleTmPoll, scheduleKbPoll } from './modules/tm-manager.js';
+import { getPipelineClickHandlers } from './modules/pipeline.js';
 import { switchTab, switchMainTab, clearOutput, copyOutput } from './ui.js';
 import { AppState } from './state.js';
 
@@ -39,7 +40,8 @@ function buildClickHandlers() {
                 if (ta) ta.value = ta.placeholder || '示例EPUB代码加载失败';
             },
         },
-        getClickHandlers()
+        getClickHandlers(),
+        getPipelineClickHandlers()
     );
 }
 

@@ -28,17 +28,11 @@ class TranslateRequest(BaseModel):
 
 class EpubRequest(BaseModel):
     content: str
-    use_rag: bool = False
-    kb_ids: List[str] = []
-    group_id: Optional[str] = None
     user_epub_code: Optional[str] = None
 
 class EpubReplaceRequest(BaseModel):
     translation: str
     epub_code: str
-    use_rag: bool = False
-    kb_ids: List[str] = []
-    group_id: Optional[str] = None
 
 class CreateGroupRequest(BaseModel):
     name: str
@@ -63,3 +57,12 @@ class UpdateKBRequest(BaseModel):
 class AssignKBRequest(BaseModel):
     kb_ids: List[str]
     is_default: bool = False
+
+class HybridSearchRequest(BaseModel):
+    query: str
+    kb_ids: Optional[List[str]] = None
+    group_id: Optional[str] = None
+    top_k: int = 3
+    score_threshold: float = 0.3
+    semantic_weight: float = 0.7
+    keyword_weight: float = 0.3

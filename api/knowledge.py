@@ -7,8 +7,10 @@ from core.dependencies import ConfigError
 from services.knowledge_manager import kb_manager
 from services.knowledge_service import add_to_knowledge, query_knowledge
 from models.schemas import (
-    CreateKBRequest, UpdateKBRequest, CreateGroupRequest, UpdateGroupRequest, AssignKBRequest
+    CreateKBRequest, UpdateKBRequest, CreateGroupRequest, UpdateGroupRequest, AssignKBRequest,
+    HybridSearchRequest
 )
+from services.hybrid_search import hybrid_query_multiple, HybridSearcher
 
 router = APIRouter()
 
@@ -279,5 +281,29 @@ async def unassign_kb_from_agent(agent_name: str, kb_id: str):
     try:
         kb_manager.unassign_kb_from_agent(agent_name, kb_id)
         return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ===== 混合检索 =====
+@router.post("/api/kb/hybrid-search")
+async def hybrid_search(req: HybridSearchRequest):
+    """混合检索：向量语义 + 全文关键词，加权重排序"""
+    try:
+        from services.knowledge_service import resolve_rag_kb_ids
+        kb_ids = resolve_rag_kb_ids(req.kb_ids, req.group_id, "")
+        if not kb_ids:
+            kb_ids = [kb['id'] for kb in kb_manager.get_all_kbs()]
+
+        results = hybrid_query_multiple(
+            kb_ids, req.query,
+            top_k=req.top_k,
+            score_threshold=req.score_threshold,
+            semantic_weight=req.semantic_weight,
+            keyword_weight=req.keyword_weight
+        )
+        return {"success": True, "results": results,
+                "params": {"top_k": req.top_k, "score_threshold": req.score_threshold,
+                           "semantic_weight": req.semantic_weight, "keyword_weight": req.keyword_weight}}
     except Exception as e:
         return {"success": False, "error": str(e)}

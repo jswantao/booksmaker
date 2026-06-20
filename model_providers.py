@@ -2,8 +2,19 @@
 # 支持 OpenAI API 和本地 transformers 模型，复用 EmbeddingProvider 的惰性加载 + 线程安全模式
 
 import threading
+import gc
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
+
+def cleanup_vram():
+    """彻底清理 PyTorch / Python 显存碎片与残留对象"""
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
 
 class LLMProvider(ABC):
@@ -64,16 +75,19 @@ class OpenAILLMProvider(LLMProvider):
 class TransformersLLMProvider(LLMProvider):
     """封装本地 transformers 模型推理，惰性加载 + 线程安全"""
 
-    def __init__(self, model_id: str, device: str = None, load_in_8bit: bool = False):
+    def __init__(self, model_id: str, device: str = None, load_in_8bit: bool = False,
+                 load_in_4bit: bool = False):
         """
         Args:
             model_id: HuggingFace 模型 ID
             device: None=auto, 'cpu', 'cuda', 'cuda:0'
             load_in_8bit: 是否使用 8bit 量化（节省约 50% 内存）
+            load_in_4bit: 是否使用 4bit 量化（GPTQ 模型专用，显存约 4GB）
         """
         self._model_id = model_id
         self._device = device
         self._load_in_8bit = load_in_8bit
+        self._load_in_4bit = load_in_4bit
         self._model = None
         self._tokenizer = None
         self._load_error: Optional[str] = None
@@ -118,22 +132,59 @@ class TransformersLLMProvider(LLMProvider):
 
                 # 加载模型
                 import torch
-                # 默认优先强制使用纯显存 (cuda:0) 直接加载运行，避免占用内存，解决系统内存高压、显存利用率低的问题
-                if self._device is None or self._device == "auto":
-                    target_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+                
+                # 检查 PyTorch 是否支持 CUDA 显卡加速
+                if not torch.cuda.is_available():
+                    print("\n" + "="*80)
+                    print("⚠️ [特别警告] 当前安装的 PyTorch 不支持 CUDA 显卡加速 (torch.cuda.is_available() 为 False)！")
+                    print("模型被迫以纯 CPU 运行，这将占用高达 6GB 以上的系统内存 (RAM)，且显卡利用率将为 0%！")
+                    print("请在终端运行以下命令安装 GPU 显卡加速版本的 PyTorch：")
+                    print("pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121")
+                    print("="*80 + "\n")
+                    target_device = "cpu"
                 else:
-                    target_device = self._device
+                    if self._device is None or self._device == "auto":
+                        target_device = "cuda:0"
+                    else:
+                        target_device = self._device
 
-                load_kwargs = {"device_map": target_device,
-                               "trust_remote_code": True}
-                if self._load_in_8bit:
+                load_kwargs = {
+                    "device_map": target_device,
+                    "trust_remote_code": True,
+                    "low_cpu_mem_usage": True,  # 彻底避免将完整的 Tensors 缓存在 CPU 系统内存中，大幅降低 RAM 内存压力
+                    "attn_implementation": "sdpa"  # 开启 PyTorch 原生高效注意力 (Flash Attention / SDPA)，彻底解决输入长文本时 N^2 显存分配导致 OOM (9.88GB) 的问题
+                }
+
+                # 4-bit GPTQ 量化模型（如 Qwen2-7B-Instruct-GPTQ-Int4）
+                if self._load_in_4bit:
+                    load_kwargs.pop("attn_implementation", None)  # GPTQ 可能不支持 sdpa
+                    print(f"[Model] Loading 4-bit GPTQ model: {self._model_id}")
+                    self._model = AutoModelForCausalLM.from_pretrained(
+                        self._model_id,
+                        device_map="auto",
+                        trust_remote_code=True,
+                        low_cpu_mem_usage=True,
+                        torch_dtype=torch.float16,
+                    )
+                    self._model.eval()  # GPTQ 推理模式
+                elif self._load_in_8bit:
                     load_kwargs["load_in_8bit"] = True
+                    self._model = AutoModelForCausalLM.from_pretrained(
+                        self._model_id, **load_kwargs
+                    )
                 else:
                     load_kwargs["torch_dtype"] = torch.float16
-
-                self._model = AutoModelForCausalLM.from_pretrained(
-                    self._model_id, **load_kwargs
-                )
+                    self._model = AutoModelForCausalLM.from_pretrained(
+                        self._model_id, **load_kwargs
+                    )
+                
+                # 再次强制确保模型完整挂载在 GPU 显卡显存上
+                if target_device != "cpu":
+                    try:
+                        self._model.to(target_device)
+                    except Exception:
+                        pass
+                        
                 self._load_status = "ready"
             except ImportError as e:
                 self._load_error = f"缺少依赖: {e}。请运行 pip install transformers accelerate bitsandbytes"
@@ -165,31 +216,46 @@ class TransformersLLMProvider(LLMProvider):
     def chat(self, messages: List[Dict[str, str]], **gen_kwargs) -> str:
         self._ensure_model_loaded()
 
-        # 构建输入
-        prompt = self._build_prompt(messages)
-        inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
-
-        # 生成参数
-        temperature = gen_kwargs.get("temperature", 0.3)
-        max_new_tokens = gen_kwargs.get("max_tokens") or gen_kwargs.get("max_new_tokens", 2048)
-        top_p = gen_kwargs.get("top_p", 0.9)
-
-        outputs = self._model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature if temperature > 0 else 1.0,
-            do_sample=temperature > 0,
-            top_p=top_p,
-            pad_token_id=self._tokenizer.pad_token_id,
-            eos_token_id=self._tokenizer.eos_token_id,
-        )
-
-        # 解码（仅保留新生成部分）
-        response = self._tokenizer.decode(
-            outputs[0][inputs.input_ids.shape[1]:],
-            skip_special_tokens=True
-        )
-        return response.strip()
+        try:
+            # 构建输入
+            prompt = self._build_prompt(messages)
+            # 极度安全保险：如果构建的总 Prompt 超过 5000 字符，强制做合理的中间截断保留（重点确保首部 System 学术规范和尾部 User 待译文本完整），防止 RAG/TM 拼接过长导致向前传播时中间层激活 Tensor 发生 $O(N^2)$ 爆炸产生显存 OOM
+            if len(prompt) > 5000:
+                prompt = prompt[:2000] + "\n\n... [参考上文已智能截断] ...\n\n" + prompt[-2500:]
+                
+            inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
+    
+            # 生成参数
+            temperature = gen_kwargs.get("temperature", 0.3)
+            max_new_tokens = gen_kwargs.get("max_tokens") or gen_kwargs.get("max_new_tokens", 2048)
+            top_p = gen_kwargs.get("top_p", 0.9)
+    
+            import torch
+            with torch.inference_mode():
+                outputs = self._model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature if temperature > 0 else 1.0,
+                    do_sample=temperature > 0,
+                    top_p=top_p,
+                    pad_token_id=self._tokenizer.pad_token_id,
+                    eos_token_id=self._tokenizer.eos_token_id,
+                )
+    
+            # 解码（仅保留新生成部分）
+            response = self._tokenizer.decode(
+                outputs[0][inputs.input_ids.shape[1]:],
+                skip_special_tokens=True
+            )
+            return response.strip()
+        except BaseException as e:
+            cleanup_vram()
+            if "out of memory" in str(e).lower():
+                raise RuntimeError("❌ 显卡显存溢出 (CUDA Out Of Memory)！已为您紧急清理并释放显存缓存。请尝试缩短本次提交的英文段落或 EPUB 代码篇幅后再试。")
+            raise e
+        finally:
+            # 每次生成完毕，立刻深度清理残留的隐式 Tensors 和计算图
+            cleanup_vram()
 
 
 # ==================== LLM 管理器（单例） ====================
@@ -225,10 +291,13 @@ class LLMManager:
         self.set_provider(task, OpenAILLMProvider(client, model))
 
     def configure_local(self, model_id: str, task: str = "default",
-                        device: str = None, load_in_8bit: bool = False):
-        """配置本地模型"""
+                        device: str = None, load_in_8bit: bool = False,
+                        load_in_4bit: bool = False):
+        """配置本地模型（支持 4-bit GPTQ / 8-bit 量化）"""
         self.set_provider(task,
-                          TransformersLLMProvider(model_id, device=device, load_in_8bit=load_in_8bit))
+                          TransformersLLMProvider(model_id, device=device,
+                                                  load_in_8bit=load_in_8bit,
+                                                  load_in_4bit=load_in_4bit))
 
     def chat(self, messages: List[Dict[str, str]], task: str = "default", **gen_kwargs) -> str:
         """统一生成接口，根据 task 选择对应模型"""

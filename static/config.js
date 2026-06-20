@@ -18,6 +18,18 @@ export const API_PATH = {
     embeddingStatus: '/api/config/embedding/status',
     llmStatus: '/api/config/llm/status',
     epubDownload: '/api/download/epub',
+    // Pipeline API
+    pipelineUpload: '/api/pipeline/upload',
+    pipelineBuildKb: '/api/pipeline/build-kb',
+    pipelineRun: '/api/pipeline/run',
+    pipelinePause: '/api/pipeline/pause',
+    pipelineResume: '/api/pipeline/resume',
+    pipelineStatus: '/api/pipeline/status',
+    pipelineResult: '/api/pipeline/result',
+    pipelineMemory: '/api/pipeline/memory',
+    pipelineMemoryInit: '/api/pipeline/memory/init',
+    pipelineStitch: '/api/pipeline/stitch',
+    pipelineKbs: '/api/pipeline/kbs',
 };
 
 // ---- 默认值 ----

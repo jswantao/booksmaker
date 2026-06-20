@@ -3,6 +3,20 @@
 
 import threading
 from pathlib import Path
+import sys
+from types import ModuleType
+
+# 终极拦截：通过注入伪 PostHog 模块，彻底根治 ChromaDB 发送 Telemetry 引起的 capture 参数报错
+class DummyPostHog(ModuleType):
+    def capture(self, *args, **kwargs): pass
+    def Posthog(self, *args, **kwargs): return self
+
+dummy_ph = DummyPostHog("posthoganalytics")
+dummy_ph.Posthog = lambda *args, **kwargs: dummy_ph
+dummy_ph.capture = lambda *args, **kwargs: None
+sys.modules["posthoganalytics"] = dummy_ph
+sys.modules["chromadb.telemetry.posthog"] = dummy_ph
+
 import chromadb
 from chromadb.config import Settings
 

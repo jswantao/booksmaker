@@ -18,6 +18,7 @@ export function cacheElements() {
         'llmStatus', 'llmStatusText',
         'apiConfigGrid', 'apiConfigToggleBtn', 'configSummaryText',
         'themeToggle',
+        'pipelineOutput', 'pipelineProgressBar', 'pipelineProgressText',
     ];
     for (const id of ids) {
         Elements[id] = document.getElementById(id);

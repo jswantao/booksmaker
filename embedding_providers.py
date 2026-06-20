@@ -2,8 +2,19 @@
 """嵌入提供者抽象层 — 支持 OpenAI API 和 BGE 本地模型"""
 
 import threading
+import gc
 from abc import ABC, abstractmethod
 from typing import List, Optional
+
+def cleanup_vram():
+    """彻底清理 PyTorch / Python 显存碎片与残留对象"""
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
 
 class EmbeddingProvider(ABC):
@@ -148,17 +159,26 @@ class BGEEmbeddingProvider(EmbeddingProvider):
     def embed(self, texts: List[str], is_query: bool = False) -> List[List[float]]:
         self._ensure_model_loaded()
 
-        # BGE 模型：查询侧加指令前缀，文档侧不加
-        if is_query:
-            texts = [self.QUERY_INSTRUCTION + t for t in texts]
-
-        embeddings = self._model.encode(
-            texts,
-            normalize_embeddings=True,  # L2 归一化，匹配余弦距离
-            show_progress_bar=False
-        )
-        # numpy.ndarray → List[List[float]]
-        return embeddings.tolist()
+        try:
+            # 极度安全保险：针对超长段落、整章文本或复杂 EPUB XML 代码块，强制截断到合理的最大编码长度（1000字符），防止 self-attention 显存/内存瞬间被打爆产生 OOM
+            safe_texts = [t[:1000] for t in texts]
+            
+            # BGE 模型：查询侧加指令前缀，文档侧不加
+            if is_query:
+                safe_texts = [self.QUERY_INSTRUCTION + t for t in safe_texts]
+    
+            import torch
+            with torch.inference_mode():
+                embeddings = self._model.encode(
+                    safe_texts,
+                    normalize_embeddings=True,  # L2 归一化，匹配余弦距离
+                    batch_size=16,  # 设定安全批处理大小，避免内存突增
+                    show_progress_bar=False
+                )
+            # numpy.ndarray → List[List[float]]
+            return embeddings.tolist()
+        finally:
+            cleanup_vram()
 
 
 # ==================== 嵌入管理器（单例） ====================

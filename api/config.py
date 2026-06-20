@@ -21,6 +21,9 @@ async def home(request: Request):
 @router.post("/api/config")
 async def set_config(req: ApiConfigRequest):
     global user_api_config
+    # 保存环境变量驱动的配置（clear 前备份，避免丢失）
+    _saved_4bit = user_api_config.get("local_load_in_4bit", True)
+    _saved_8bit = user_api_config.get("local_load_in_8bit", False)
     # 使用 dict.update() 而非 = 重新绑定，保持跨模块引用一致性
     user_api_config.clear()
     user_api_config.update({
@@ -30,7 +33,10 @@ async def set_config(req: ApiConfigRequest):
         "llm_provider": req.llm_provider,
         "local_translate_model": req.local_translate_model,
         "local_epub_model": req.local_epub_model,
+        "local_load_in_4bit": _saved_4bit,
+        "local_load_in_8bit": _saved_8bit,
     })
+
     sync_embedding_manager()
     sync_llm_manager()
 

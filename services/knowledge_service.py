@@ -83,10 +83,12 @@ def query_multiple_knowledge(kb_ids: List[str], query: str, n_results: int = 3) 
         try:
             docs = query_knowledge(col_name, query, n_results)
             for doc in docs:
-                doc_hash = hashlib.md5(doc.encode()).hexdigest()
+                # 极度安全保险：严格对检索回来的每个 RAG 知识块做字符截断（最多 500 字符），防止上传未正确切分的整本书导致大模型 Logits Tensor 爆炸发生 OOM
+                safe_doc = doc[:500]
+                doc_hash = hashlib.md5(safe_doc.encode()).hexdigest()
                 if doc_hash not in seen_hashes:
                     seen_hashes.add(doc_hash)
-                    all_results.append({"document": doc, "kb_id": kb_id, "kb_name": kb_name_map.get(kb_id, "")})
+                    all_results.append({"document": safe_doc, "kb_id": kb_id, "kb_name": kb_name_map.get(kb_id, "")})
         except Exception as e:
             print(f"KB query failed [{kb_id}/{col_name}]: {e}")
 
