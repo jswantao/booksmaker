@@ -30,7 +30,7 @@ Thumbs.db
 # 现有内容保留...
 
 # 模型文件（本地下载的 HuggingFace 模型）
-models/
+
 *.bin
 *.safetensors
 *.pth
