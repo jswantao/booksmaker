@@ -46,13 +46,18 @@ def sync_llm_manager():
         translate_model = user_api_config.get("local_translate_model", "Qwen/Qwen2.5-1.5B-Instruct")
         epub_model = user_api_config.get("local_epub_model", "") or translate_model
 
-        manager.configure_local(translate_model, task="translate")
+        from model_providers import TransformersLLMProvider
+        trans_provider = TransformersLLMProvider(translate_model, load_in_8bit=False)
+        manager.set_provider("translate", trans_provider)
+        manager.set_provider("default", trans_provider)
+
         if epub_model != translate_model:
-            manager.configure_local(epub_model, task="epub")
+            epub_provider = TransformersLLMProvider(epub_model, load_in_8bit=False)
+            manager.set_provider("epub", epub_provider)
         else:
-            manager.configure_local(translate_model, task="epub")
-        manager.configure_local(translate_model, task="default")
-        print(f"LLM provider: Local (translate={translate_model}, epub={epub_model})")
+            manager.set_provider("epub", trans_provider)
+
+        print(f"LLM provider: Local (translate={translate_model}, epub={epub_model}, FP16)")
     else:
         if not user_api_config.get("api_key"):
             print("LLM provider: OpenAI (no API key configured)")

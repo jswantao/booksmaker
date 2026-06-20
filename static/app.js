@@ -2,7 +2,7 @@
 // ES Module: 导入所有业务模块，绑定事件，启动应用
 import { Elements, cacheElements, initEvents } from './dom.js';
 import { initTheme, toggleTheme } from './modules/theme.js';
-import { loadConfig, saveConfig, clearConfig, onEmbeddingProviderChange, onLlmProviderChange } from './modules/config-panel.js';
+import { loadConfig, saveConfig, clearConfig, toggleApiConfig, onEmbeddingProviderChange, onLlmProviderChange } from './modules/config-panel.js';
 import { submitTask } from './modules/translator.js';
 import { getClickHandlers, getChangeHandlers, refreshKBManager, refreshKbSelectors } from './modules/kb-manager.js';
 import { refreshTm, deleteTm, clearTm, searchTm, addTmPair, refreshKnowledge, scheduleTmPoll, scheduleKbPoll } from './modules/tm-manager.js';
@@ -14,6 +14,7 @@ function buildClickHandlers() {
     return Object.assign(
         {
             'toggle-theme':          () => toggleTheme(),
+            'toggle-api-config':     () => toggleApiConfig(),
             'switch-main-tab':       (el) => switchMainTab(el.dataset.param),
             'switch-tab':            (el) => switchTab(el.dataset.param),
             'save-config':           () => saveConfig(),

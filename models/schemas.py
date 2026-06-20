@@ -36,6 +36,9 @@ class EpubRequest(BaseModel):
 class EpubReplaceRequest(BaseModel):
     translation: str
     epub_code: str
+    use_rag: bool = False
+    kb_ids: List[str] = []
+    group_id: Optional[str] = None
 
 class CreateGroupRequest(BaseModel):
     name: str

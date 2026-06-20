@@ -1,10 +1,17 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能翻译与EPUB工作台</title>
-    <style>
+import os
+import re
+
+# ---- 自动兼容路径 ----
+html_path = 'templates/index.html'
+if not os.path.exists(html_path):
+    html_path = 'booksmaker/templates/index.html'
+if not os.path.exists(html_path):
+    # 尝试当前脚本所在文件夹下的 templates/index.html
+    html_path = os.path.join(os.path.dirname(__file__), 'templates/index.html')
+if not os.path.exists(html_path):
+    raise FileNotFoundError("无法找到 templates/index.html。请确认本脚本位于项目根目录下。")
+
+new_style = """
         /* ===== 顶级 CSS 变量与现代化设计系统 (Arena.ai 级视觉呈现) ===== */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
 
@@ -812,26 +819,17 @@
         .kb-pick-list { max-height: 350px; overflow-y: auto; margin: 16px 0; }
         .kb-picker-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .kb-picker-header h3 { margin: 0; font-size: 1.2rem; }
-</style>
-</head>
-<body>
-<div class="container">
-    <div class="header-row">
-        <h1>📚 智能翻译 · EPUB 工作台</h1>
-        <button type="button" class="theme-toggle" id="themeToggle" data-action="toggle-theme">🌙 暗色模式</button>
-    </div>
+"""
 
-    <!-- ===== 主标签栏 ===== -->
-    <div class="main-tabs" role="tablist" aria-label="主功能标签">
-        <button type="button" class="active" data-maintab="workspace" data-action="switch-main-tab" data-param="workspace" role="tab" aria-selected="true">📝 翻译工作台</button>
-        <button type="button" data-maintab="kbmanager" data-action="switch-main-tab" data-param="kbmanager" role="tab" aria-selected="false">📚 知识库管理</button>
-    </div>
+with open(html_path, 'r', encoding='utf-8') as f:
+    content = f.read()
 
-    <!-- ===== 翻译工作台 ===== -->
-    <div id="maintab-workspace" class="maintab-content active" role="tabpanel">
+# Replace style
+content = re.sub(r'<style>.*?</style>', '<style>' + new_style + '</style>', content, flags=re.DOTALL)
 
-    <!-- ===== API配置 ===== -->
-    <div class="api-config" id="apiConfig">
+# Update apiConfig block in HTML
+old_api_config = r'<div class="api-config" id="apiConfig">.*?<div class="dashboard">'
+new_api_config = """<div class="api-config" id="apiConfig">
         <div class="config-header" data-action="toggle-api-config" style="cursor:pointer;" title="点击展开/收起配置面板">
             <div style="display:flex; align-items:center; flex-wrap:wrap; gap:12px;">
                 <span class="config-title">⚙️ 智能体与环境配置</span>
@@ -892,222 +890,11 @@
         </div>
     </div>
 
-    <div class="dashboard">
+    <div class="dashboard">"""
 
-        <!-- ===== 左侧：翻译 ===== -->
-        <div class="card">
-            <h2>🌍 世界史专家 <span class="agent-badge">翻译</span></h2>
-            <div class="subtitle">英文历史书籍 → 中文翻译，支持RAG知识库和翻译记忆库</div>
+content = re.sub(old_api_config, new_api_config, content, flags=re.DOTALL)
 
-            <textarea id="translateInput" placeholder="请输入英文历史段落...">The Treaty of Versailles, signed in 1919, imposed severe terms on Germany after World War I. It required Germany to accept responsibility for the war, pay massive reparations, and cede territory to neighboring nations.</textarea>
+with open(html_path, 'w', encoding='utf-8') as f:
+    f.write(content)
 
-            <div class="checkbox-group">
-                <label><input type="checkbox" id="translateTm" checked> 📖 启用翻译记忆库</label>
-                <label><input type="checkbox" id="translateRag" checked data-change="toggle-kb-selector" data-param="translate"> 📚 启用RAG知识库</label>
-            </div>
-            <div id="translateKbSelector" class="kb-selector">
-                <select id="translateGroupSelect" data-change="group-select" data-param="translate">
-                    <option value="">按分组: 全部知识库</option>
-                </select>
-                <div class="selected-tags" id="translateKbTags"></div>
-            </div>
-
-            <div class="btn-group">
-                <button type="button" class="btn" data-action="translate">翻译</button>
-                <button type="button" class="btn btn-secondary" data-action="clear-output" data-param="translationOutput">清空</button>
-            </div>
-            <div id="translationStatus" class="status"></div>
-            <div id="translationOutput" class="output-box"></div>
-
-            <div class="rag-section">
-                <div class="file-upload">
-                    <span class="section-label">上传知识文档：</span>
-                    <input type="file" id="translateKnowledgeFile" accept=".txt,.md">
-                    <button type="button" class="btn btn-secondary" data-action="upload-knowledge" data-param="世界史专家">上传</button>
-                </div>
-                <div id="translateKnowledgeList" class="knowledge-list"></div>
-            </div>
-        </div>
-
-        <!-- ===== 右侧：EPUB ===== -->
-        <div class="card">
-            <h2>📖 EPUB编辑 <span class="agent-badge">代码生成 / 替换</span></h2>
-
-            <div class="tab-group" role="tablist" aria-label="EPUB功能标签">
-                <button type="button" class="active" data-tab="generate" data-action="switch-tab" data-param="generate" role="tab" aria-selected="true">生成EPUB</button>
-                <button type="button" data-tab="replace" data-action="switch-tab" data-param="replace" role="tab" aria-selected="false">替换内容</button>
-            </div>
-
-            <!-- 生成EPUB标签 -->
-            <div id="tab-generate" class="tab-content active" role="tabpanel">
-                <div class="subtitle">根据中文内容生成EPUB代码</div>
-                <textarea id="epubInput" placeholder="请输入中文内容...">第一章 和平的代价
-
-1919年6月28日，德国代表在凡尔赛宫镜厅签署了《凡尔赛条约》。</textarea>
-                <div class="btn-group">
-                    <button type="button" class="btn" data-action="generate-epub">生成EPUB</button>
-                    <button type="button" class="btn btn-secondary" data-action="clear-output" data-param="epubOutput">清空</button>
-                </div>
-                <div id="epubStatus" class="status"></div>
-                <div id="epubOutput" class="output-box"></div>
-            </div>
-
-            <!-- 替换内容标签 -->
-            <div id="tab-replace" class="tab-content" role="tabpanel">
-                <div class="subtitle">将新译文替换到现有EPUB代码中</div>
-                <div class="mb-sm">
-                    <span class="section-label-inline">新译文：</span>
-                    <button type="button" class="example-btn" data-action="load-example-translation">加载示例</button>
-                </div>
-                <textarea id="replaceTranslation" placeholder="输入新的译文..."></textarea>
-                <div class="mt-md mb-sm">
-                    <span class="section-label-inline">EPUB代码（包含HTML标签）：</span>
-                    <button type="button" class="example-btn" data-action="load-example-epub">加载示例</button>
-                </div>
-                <textarea id="replaceEpubCode" placeholder="粘贴EPUB代码..."></textarea>
-                <div class="btn-group">
-                    <button type="button" class="btn btn-warning" data-action="replace-epub">🔄 替换内容</button>
-                    <button type="button" class="btn btn-secondary" data-action="clear-output" data-param="replaceOutput">清空</button>
-                </div>
-                <div id="replaceStatus" class="status"></div>
-                <div id="replaceOutput" class="output-box"></div>
-            </div>
-
-            <div class="rag-section">
-                <label><input type="checkbox" id="epubRag" checked data-change="toggle-kb-selector" data-param="epub"> 启用RAG知识库</label>
-                <div id="epubKbSelector" class="kb-selector">
-                    <select id="epubGroupSelect" data-change="group-select" data-param="epub">
-                        <option value="">按分组: 全部知识库</option>
-                    </select>
-                    <div class="selected-tags" id="epubKbTags"></div>
-                </div>
-                <div class="file-upload">
-                    <span class="section-label">上传知识文档：</span>
-                    <input type="file" id="epubKnowledgeFile" accept=".txt,.md,.xml">
-                    <button type="button" class="btn btn-secondary" data-action="upload-knowledge" data-param="EPUB编辑">上传</button>
-                </div>
-                <div id="epubKnowledgeList" class="knowledge-list"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ===== 翻译记忆库管理 ===== -->
-    <div class="panel-card">
-        <div class="panel-header">
-            <div>
-                <h3>📖 翻译记忆库 <span class="tm-badge" id="tmCount">0 条</span></h3>
-                <div class="panel-subtitle">存储历史翻译，保证翻译一致性</div>
-            </div>
-            <div class="panel-actions">
-                <button type="button" class="btn btn-secondary" data-action="search-tm">🔍 搜索</button>
-                <input type="text" id="tmSearchInput" class="text-input search-input" placeholder="搜索翻译...">
-                <button type="button" class="btn btn-danger btn-sm" data-action="clear-tm">清空全部</button>
-                <button type="button" class="btn btn-secondary btn-sm" data-action="refresh-tm">刷新</button>
-            </div>
-        </div>
-
-        <div id="tmList" class="tm-list">
-            <div class="empty-state">暂无翻译记忆，开始翻译后会自动积累</div>
-        </div>
-
-        <!-- 手动添加翻译 -->
-        <div class="add-pair-section">
-            <div class="panel-subtitle mb-sm">手动添加翻译对：</div>
-            <div class="add-pair-grid">
-                <input type="text" id="tmAddSource" class="text-input" placeholder="原文 (英文)">
-                <input type="text" id="tmAddTarget" class="text-input" placeholder="译文 (中文)">
-                <button type="button" class="btn btn-success btn-add" data-action="add-tm-pair">添加</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ===== 底部：知识库状态 ===== -->
-    <div class="panel-card-sm">
-        <div><strong>📂 知识库状态</strong></div>
-        <div class="panel-actions">
-            <div><span class="kb-status-label">世界史专家：</span><span id="kbHistCount">0</span> 条</div>
-            <div><span class="kb-status-label">EPUB编辑：</span><span id="kbEpubCount">0</span> 条</div>
-        </div>
-        <button type="button" class="btn btn-secondary" data-action="refresh-knowledge">刷新</button>
-    </div>
-</div><!-- end maintab-workspace -->
-
-<!-- ===== 知识库管理 ===== -->
-<div id="maintab-kbmanager" class="maintab-content" role="tabpanel">
-    <div class="card full-width-card">
-        <div class="config-header">
-            <h2>📚 知识库管理</h2>
-            <div class="kb-toolbar">
-                <button type="button" class="btn btn-success" data-action="show-kb-modal">+ 新建知识库</button>
-                <button type="button" class="btn btn-secondary" data-action="show-group-modal">+ 新建分组</button>
-                <button type="button" class="btn btn-secondary" data-action="refresh-kb-manager">🔄 刷新</button>
-            </div>
-        </div>
-        <div class="subtitle">管理知识库与分组，为智能体分配检索资源</div>
-        <div id="kbManagerContent">
-            <div class="empty-state">加载中...</div>
-        </div>
-    </div>
-</div><!-- end maintab-kbmanager -->
-
-<!-- KB/Group 模态框 -->
-<div id="kbModalOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="kbModalTitle">
-    <div class="modal">
-        <h3 id="kbModalTitle">新建知识库</h3>
-        <input type="hidden" id="kbModalEditId">
-        <label>名称</label>
-        <input type="text" id="kbModalName" placeholder="知识库名称">
-        <label>描述</label>
-        <textarea id="kbModalDesc" placeholder="知识库描述（可选）" rows="2"></textarea>
-        <label>嵌入模型</label>
-        <select id="kbModalEmbedding">
-            <option value="">跟随全局设置</option>
-            <option value="bge">BGE 本地模型</option>
-            <option value="openai">OpenAI API</option>
-        </select>
-        <label>所属分组</label>
-        <select id="kbModalGroup">
-            <option value="">无分组</option>
-        </select>
-        <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" data-action="hide-kb-modal">取消</button>
-            <button type="button" class="btn btn-success" id="kbModalSaveBtn" data-action="save-kb-modal">创建</button>
-        </div>
-    </div>
-</div>
-
-<div id="groupModalOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="groupModalTitle">
-    <div class="modal">
-        <h3 id="groupModalTitle">新建分组</h3>
-        <input type="hidden" id="groupModalEditId">
-        <label>分组名称</label>
-        <input type="text" id="groupModalName" placeholder="分组名称">
-        <label>描述</label>
-        <textarea id="groupModalDesc" placeholder="分组描述（可选）" rows="2"></textarea>
-        <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" data-action="hide-group-modal">取消</button>
-            <button type="button" class="btn btn-success" id="groupModalSaveBtn" data-action="save-group-modal">创建</button>
-        </div>
-    </div>
-</div>
-
-<!-- KB 选择器模态框 -->
-<div id="kbPickerOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="选择知识库">
-    <div class="modal">
-        <div class="kb-picker-header">
-            <h3>选择要使用的知识库（可多选）</h3>
-            <button type="button" class="btn btn-secondary btn-sm" data-action="toggle-kb-picker-all">全选/取消</button>
-        </div>
-        <div id="kbPickerList" class="kb-pick-list"></div>
-        <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" data-action="hide-kb-picker">取消</button>
-            <button type="button" class="btn btn-success" data-action="confirm-kb-picker">确定</button>
-        </div>
-    </div>
-</div>
-
-</div><!-- end container -->
-
-<script type="module" src="/static/app.js"></script>
-</body>
-</html>
+print("Successfully updated index.html UI!")

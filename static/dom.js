@@ -15,6 +15,8 @@ export function cacheElements() {
         'tmCount', 'tmList', 'kbManagerContent',
         'kbHistCount', 'kbEpubCount',
         'bgeStatus', 'bgeStatusText', 'bgeStatusSpinner',
+        'llmStatus', 'llmStatusText',
+        'apiConfigGrid', 'apiConfigToggleBtn', 'configSummaryText',
         'themeToggle',
     ];
     for (const id of ids) {

@@ -1,7 +1,9 @@
 # api/translate.py — 翻译端点
 from fastapi import APIRouter
+import re
 from models.schemas import TranslateRequest
 from models.agent import Agent
+from agents import AGENTS
 from config import user_api_config
 from core.dependencies import get_model_config, ConfigError
 from embedding_providers import EmbeddingManager
@@ -35,7 +37,9 @@ async def translate(req: TranslateRequest):
                 print(f"TM vector search failed, fallback to Jaccard: {e}")
                 tm_matches = tm_instance.search(req.text, threshold=0.4, limit=3)
 
-        messages = [{"role": "system", "content": "你是「世界史翻译官」，精通英语与中文，擅长翻译英文历史书籍为中文。要求：准确忠实、完整严谨、专有名词使用公认译名、学术风格、流畅自然。"}]
+        expert = AGENTS.get("世界史专家")
+        sys_prompt = expert.system_prompt if expert else "你是「世界史翻译官」，精通英语与中文，擅长翻译英文历史书籍为中文。要求：准确忠实、完整严谨、专有名词使用公认译名、学术风格、流畅自然。"
+        messages = [{"role": "system", "content": sys_prompt}]
 
         if tm_matches:
             tm_ctx = "\n".join(
@@ -56,6 +60,9 @@ async def translate(req: TranslateRequest):
         messages.append({"role": "user", "content": f"请翻译以下英文历史文本为中文：\n\n{req.text}"})
 
         translation = LLMManager().chat(messages, task="translate", temperature=0.3)
+
+        # 二次清理：自动移除译文中残留的 HTML/XML 标签（如 <span ...></span>, <a ...>...</a>）
+        translation = re.sub(r'<[^>]+>', '', translation)
 
         if req.use_tm:
             tm_instance.add(req.text, translation, context=req.context)

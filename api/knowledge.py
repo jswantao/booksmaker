@@ -164,8 +164,53 @@ async def clear_kb_documents(kb_id: str):
         return {"success": False, "error": str(e)}
 
 
+@router.get("/api/knowledge")
+async def get_all_knowledge_summary():
+    """获取所有智能体的知识库状态与文档列表摘要（供前端实时轮询和展示使用）"""
+    try:
+        def _get_agent_summary(agent_name: str):
+            kbs = kb_manager.get_agent_kbs(agent_name)
+            total_count = sum(kb["document_count"] for kb in kbs)
+            doc_names = []
+            for kb in kbs:
+                try:
+                    col = chroma_client.get_collection(kb["collection_name"])
+                    res = col.get(include=["metadatas"])
+                    metas = res.get("metadatas") or []
+                    sources = {m.get("source", kb["name"]) for m in metas if isinstance(m, dict)}
+                    if sources:
+                        doc_names.extend(list(sources))
+                    else:
+                        doc_names.append(f"{kb['name']} ({kb['document_count']}段)")
+                except Exception:
+                    if kb["document_count"] > 0:
+                        doc_names.append(f"{kb['name']} ({kb['document_count']}段)")
+            return total_count, sorted(list(set(doc_names)))
+
+        history_count, history_docs = _get_agent_summary("世界史专家")
+        epub_count, epub_docs = _get_agent_summary("EPUB编辑")
+
+        return {
+            "success": True,
+            "history_count": history_count,
+            "epub_count": epub_count,
+            "history": history_docs,
+            "epub": epub_docs
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "history_count": 0,
+            "epub_count": 0,
+            "history": [],
+            "epub": []
+        }
+
+
 # ===== 旧版兼容: 知识库上传/查询 =====
 @router.post("/api/upload_knowledge")
+@router.post("/api/knowledge/upload")
 async def upload_knowledge(agent_name: str = Form(...), file: UploadFile = File(...)):
     if user_api_config.get("embedding_provider") != "bge" and not user_api_config.get("api_key"):
         return {"success": False, "error": "请先配置API密钥", "code": "API_KEY_MISSING"}

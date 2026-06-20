@@ -64,7 +64,7 @@ class OpenAILLMProvider(LLMProvider):
 class TransformersLLMProvider(LLMProvider):
     """封装本地 transformers 模型推理，惰性加载 + 线程安全"""
 
-    def __init__(self, model_id: str, device: str = None, load_in_8bit: bool = True):
+    def __init__(self, model_id: str, device: str = None, load_in_8bit: bool = False):
         """
         Args:
             model_id: HuggingFace 模型 ID
@@ -117,12 +117,13 @@ class TransformersLLMProvider(LLMProvider):
                     self._tokenizer.pad_token = self._tokenizer.eos_token
 
                 # 加载模型
+                import torch
                 load_kwargs = {"device_map": "auto" if self._device is None else self._device,
                                "trust_remote_code": True}
                 if self._load_in_8bit:
                     load_kwargs["load_in_8bit"] = True
                 else:
-                    load_kwargs["torch_dtype"] = "auto"
+                    load_kwargs["torch_dtype"] = torch.float16
 
                 self._model = AutoModelForCausalLM.from_pretrained(
                     self._model_id, **load_kwargs
@@ -218,7 +219,7 @@ class LLMManager:
         self.set_provider(task, OpenAILLMProvider(client, model))
 
     def configure_local(self, model_id: str, task: str = "default",
-                        device: str = None, load_in_8bit: bool = True):
+                        device: str = None, load_in_8bit: bool = False):
         """配置本地模型"""
         self.set_provider(task,
                           TransformersLLMProvider(model_id, device=device, load_in_8bit=load_in_8bit))
@@ -243,3 +244,10 @@ class LLMManager:
                     status_info["status"] = "ready"
                 result[task] = status_info
             return result
+
+    def preload_local_models(self):
+        """异步在后台触发本地模型的惰性加载"""
+        with self._provider_lock:
+            for task, provider in self._providers.items():
+                if isinstance(provider, TransformersLLMProvider):
+                    threading.Thread(target=provider._ensure_model_loaded).start()

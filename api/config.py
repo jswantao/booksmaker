@@ -37,13 +37,14 @@ async def set_config(req: ApiConfigRequest):
     # 连接测试
     try:
         if req.llm_provider == "local":
-            # 本地模式：检查模型配置是否成功（不触发模型加载）
+            # 本地模式：触发后台异步模型加载
+            LLMManager().preload_local_models()
             status = LLMManager().get_all_status()
             tasks = list(status.keys())
             if not tasks:
                 return {"success": False, "error": "本地模型配置失败，请检查模型 ID", "code": "LOCAL_CONFIG_ERROR"}
             return {"success": True,
-                    "message": f"本地模型已配置 ({len(tasks)} 个任务: {', '.join(tasks)})"}
+                    "message": f"本地模型已配置 ({len(tasks)} 个任务)，正在后台异步加载..."}
         else:
             LLMManager().chat([{"role": "user", "content": "test"}], task="default", max_tokens=5)
             return {"success": True, "message": "API配置成功，连接测试通过"}

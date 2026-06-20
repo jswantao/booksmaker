@@ -62,6 +62,10 @@ export function fetchEmbeddingStatus() {
     return fetchGET(API_PATH.embeddingStatus);
 }
 
+export function fetchLlmStatus() {
+    return fetchGET(API_PATH.llmStatus);
+}
+
 // ---- 翻译 & EPUB API ----
 export function callTranslate(body) {
     return fetchAPI(API_PATH.translate, body);

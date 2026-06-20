@@ -16,6 +16,7 @@ export const API_PATH = {
     knowledge:    '/api/knowledge',
     knowledgeUpload: '/api/knowledge/upload',
     embeddingStatus: '/api/config/embedding/status',
+    llmStatus: '/api/config/llm/status',
     epubDownload: '/api/download/epub',
 };
 

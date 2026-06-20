@@ -82,11 +82,14 @@ const TASK_CONFIGS = {
             ];
         },
         buildBody(inputs) {
-            return {
+            const useRag = $('epubRag')?.checked ?? true;
+            const body = {
                 translation: inputs[0].el.value.trim(),
                 epub_code: inputs[1].el.value.trim(),
-                use_rag: $('epubRag')?.checked ?? true
+                use_rag: useRag
             };
+            if (useRag) addRagParams(body, 'epub', AppState.selectedEpubKbs);
+            return body;
         },
         renderSuccess(result) { renderEpubOutput(result, 'replaceOutput'); }
     }

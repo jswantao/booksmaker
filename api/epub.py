@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from models.schemas import EpubRequest, EpubReplaceRequest
+from agents import AGENTS
 from config import user_api_config, Config
 from core.dependencies import ConfigError
 from model_providers import LLMManager
@@ -20,8 +21,9 @@ async def generate_epub(req: EpubRequest):
     if len(req.content) > 100000:
         return {"success": False, "error": "内容过长，最大允许100000字符", "code": "INPUT_TOO_LONG"}
     try:
-        messages = [{"role": "system",
-                     "content": "你是EPUB电子书编辑专家，精通EPUB格式和XHTML/CSS。根据用户提供的中文内容生成EPUB代码。"}]
+        expert = AGENTS.get("EPUB编辑")
+        sys_prompt = expert.system_prompt if expert else "你是EPUB电子书编辑专家，精通EPUB格式和XHTML/CSS。根据用户提供的中文内容生成EPUB代码。"
+        messages = [{"role": "system", "content": sys_prompt}]
         if req.use_rag:
             kb_ids = resolve_rag_kb_ids(req.kb_ids, req.group_id, "EPUB编辑")
             if kb_ids:
@@ -51,10 +53,22 @@ async def replace_epub(req: EpubReplaceRequest):
     if len(req.translation) > 100000 or len(req.epub_code) > 100000:
         return {"success": False, "error": "内容过长", "code": "INPUT_TOO_LONG"}
     try:
-        prompt = f"将以下新译文替换到EPUB代码中，保持所有HTML标签和样式不变，只替换文本内容。\n新译文：{req.translation}\nEPUB代码：{req.epub_code}\n请只返回替换后的完整EPUB代码。"
-        epub_code = LLMManager().chat(
-            [{"role": "system", "content": "你是EPUB编辑专家，擅长精确替换EPUB内容而不改变结构和样式。"},
-             {"role": "user", "content": prompt}], task="epub", temperature=0.1)
+        expert = AGENTS.get("EPUB编辑")
+        sys_prompt = expert.system_prompt if expert else "你是EPUB编辑专家，擅长精确替换EPUB内容而不改变结构和样式。"
+        messages = [{"role": "system", "content": sys_prompt}]
+        
+        if req.use_rag:
+            kb_ids = resolve_rag_kb_ids(req.kb_ids, req.group_id, "EPUB编辑")
+            if kb_ids:
+                items = query_multiple_knowledge(kb_ids, req.translation)
+                if items:
+                    ctx = "\n".join([f"[{i['kb_name']}] {i['document']}" for i in items])
+                    messages.append({"role": "system", "content": f"参考知识库规范与示例：\n{ctx}"})
+                    
+        prompt = f"将以下新译文精确替换到EPUB代码中，保持所有HTML标签（如 <p>, <span> 等）、CSS类名（class属性）、属性（如 id, href 等）完全不变，只替换标签之间的文本节点。\n新译文：{req.translation}\nEPUB代码：{req.epub_code}\n请只返回替换后的完整EPUB代码。"
+        messages.append({"role": "user", "content": prompt})
+        
+        epub_code = LLMManager().chat(messages, task="epub", temperature=0.1)
         epub_path = build_epub_file(epub_code, title="Replaced_EPUB")
         return {"success": True, "epub_code": epub_code,
                 "download_url": f"/api/download/epub/{epub_path.name}" if epub_path else None}
