@@ -1,0 +1,94 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.egg
+
+# Virtual environment
+venv/
+.env
+
+# ChromaDB
+chroma_db/
+
+# Uploads
+uploads/
+
+# Translation Memory SQLite
+translation_memory.db
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+# 现有内容保留...
+
+# 模型文件（本地下载的 HuggingFace 模型）
+models/
+*.bin
+*.safetensors
+*.pth
+*.ckpt
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+temp/
+tmp/
+*.tmp
+
+# 输出文件
+output/
+translated_books/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# 更多 Python 相关
+*.so
+build/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.eggs/
+
+# 配置文件（如果包含敏感信息）
+config.local.yaml
+*.local.conf
+
+# 其他虚拟环境
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# 缓存
+.cache/
+*.cached
+
+# 测试相关
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+books/
+exported_books/
+
+*.db

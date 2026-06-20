@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能翻译与EPUB工作台</title>
+    <style>
+        /* ===== CSS 变量 (亮色主题) ===== */
+        :root {
+            --bg: #f0f4f8;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --border: #e9edf2;
+            --border-light: #f1f5f9;
+            --input-bg: #ffffff;
+            --input-border: #d1d9e6;
+            --input-focus: #2d6a9f;
+            --output-bg: #f8fafc;
+            --tab-bg: #f1f5f9;
+            --tab-active-bg: #ffffff;
+            --btn-primary: #1e3a5f;
+            --btn-primary-hover: #2d6a9f;
+            --btn-secondary: #e9edf2;
+            --btn-secondary-hover: #d1d9e6;
+            --btn-success: #0b7e4b;
+            --btn-success-hover: #0d9e5e;
+            --accent: #2d6a9f;
+            --accent-light: rgba(45, 106, 159, 0.1);
+            --shadow: rgba(0,0,0,0.06);
+            --shadow-sm: rgba(0,0,0,0.04);
+            --status-success-bg: #d1fae5;
+            --status-success-text: #065f46;
+            --status-pending-bg: #fef3c7;
+            --status-pending-text: #92400e;
+            --status-error-bg: #fee2e2;
+            --status-error-text: #991b1b;
+            --tm-match-bg: #f0fdf4;
+            --tm-match-border: #0b7e4b;
+            --tm-badge-bg: #dbeafe;
+            --tm-badge-color: #1e40af;
+            --agent-badge-bg: #e9edf2;
+            --copy-copied-bg: #d1fae5;
+            --copy-copied-text: #065f46;
+            --gradient-from: #1e3a5f;
+            --gradient-to: #2d6a9f;
+        }
+
+        /* ===== 暗色主题 ===== */
+        body.dark {
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --text: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #334155;
+            --border-light: #1e293b;
+            --input-bg: #1e293b;
+            --input-border: #475569;
+            --input-focus: #60a5fa;
+            --output-bg: #0f172a;
+            --tab-bg: #1e293b;
+            --tab-active-bg: #334155;
+            --btn-primary: #3b82f6;
+            --btn-primary-hover: #2563eb;
+            --btn-secondary: #334155;
+            --btn-secondary-hover: #475569;
+            --btn-success: #059669;
+            --btn-success-hover: #047857;
+            --accent: #60a5fa;
+            --accent-light: rgba(96, 165, 250, 0.15);
+            --shadow: rgba(0,0,0,0.3);
+            --shadow-sm: rgba(0,0,0,0.2);
+            --status-success-bg: #064e3b;
+            --status-success-text: #6ee7b7;
+            --status-pending-bg: #78350f;
+            --status-pending-text: #fcd34d;
+            --status-error-bg: #7f1d1d;
+            --status-error-text: #fca5a5;
+            --tm-match-bg: #064e3b;
+            --tm-match-border: #059669;
+            --tm-badge-bg: #1e3a5f;
+            --tm-badge-color: #93c5fd;
+            --agent-badge-bg: #334155;
+            --copy-copied-bg: #064e3b;
+            --copy-copied-text: #6ee7b7;
+            --gradient-from: #60a5fa;
+            --gradient-to: #93c5fd;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 20px;
+            transition: background 0.3s, color 0.3s;
+        }
+        .container { max-width: 1500px; margin: 0 auto; }
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        h1 {
+            font-size: 2rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--gradient-from), var(--gradient-to));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 0;
+        }
+        .theme-toggle {
+            background: var(--btn-secondary);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        .theme-toggle:hover { background: var(--btn-secondary-hover); }
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+        @media (max-width: 1100px) {
+            .dashboard { grid-template-columns: 1fr; }
+        }
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 12px var(--shadow);
+            border: 1px solid var(--border);
+        }
+        .card h2 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+        }
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            resize: vertical;
+            min-height: 100px;
+            background: var(--input-bg);
+            color: var(--text);
+            transition: border 0.2s;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: var(--input-focus);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+        .btn {
+            background: var(--btn-primary);
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .btn:hover { background: var(--btn-primary-hover); }
+        .btn:active { transform: scale(0.97); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-success { background: var(--btn-success); }
+        .btn-success:hover { background: var(--btn-success-hover); }
+        .btn-secondary {
+            background: var(--btn-secondary);
+            color: var(--text);
+        }
+        .btn-secondary:hover { background: var(--btn-secondary-hover); }
+        .btn-warning { background: #d97706; color: white; }
+        .btn-warning:hover { background: #b45309; }
+        .btn-danger { background: #b91c1c; color: white; }
+        .btn-danger:hover { background: #991b1b; }
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        .output-box {
+            background: var(--output-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 12px;
+            min-height: 80px;
+            white-space: pre-wrap;
+            font-size: 0.95rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .output-box pre {
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: inherit;
+            color: var(--text);
+        }
+        .status {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+        .status.success { color: var(--status-success-text); }
+        .status.error { color: var(--status-error-text); }
+        .status.info { color: var(--accent); }
+        .rag-section {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+        .rag-section label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+        .file-upload {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .file-upload input[type="file"] { font-size: 0.85rem; color: var(--text); }
+        .knowledge-list {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        .knowledge-list li {
+            padding: 4px 0;
+            border-bottom: 1px solid var(--border-light);
+            list-style: none;
+        }
+        .agent-badge {
+            display: inline-block;
+            background: var(--agent-badge-bg);
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .tm-badge {
+            display: inline-block;
+            background: var(--tm-badge-bg);
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            color: var(--tm-badge-color);
+        }
+        .api-config {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 8px var(--shadow-sm);
+        }
+        .api-config .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        @media (max-width: 600px) {
+            .api-config .config-grid { grid-template-columns: 1fr; }
+        }
+        .api-config .config-grid .full-width { grid-column: 1 / -1; }
+        .api-config .config-grid label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            display: block;
+            margin-bottom: 4px;
+        }
+        .api-config .config-grid input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--input-border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background: var(--input-bg);
+            color: var(--text);
+        }
+        .api-config .config-grid input:focus {
+            outline: none;
+            border-color: var(--input-focus);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+        .api-config .config-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .api-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .api-status.ready { background: var(--status-success-bg); color: var(--status-success-text); }
+        .api-status.pending { background: var(--status-pending-bg); color: var(--status-pending-text); }
+        .api-status.error { background: var(--status-error-bg); color: var(--status-error-text); }
+        .tab-group {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            background: var(--tab-bg);
+            padding: 4px;
+            border-radius: 10px;
+        }
+        .tab-group button {
+            flex: 1;
+            padding: 8px 16px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+        .tab-group button.active {
+            background: var(--tab-active-bg);
+            color: var(--text);
+            box-shadow: 0 1px 3px var(--shadow);
+        }
+        .tab-group button:hover:not(.active) { color: var(--text); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* ===== 主标签栏 ===== */
+        .main-tabs {
+            display: flex; gap: 0; margin-bottom: 20px;
+            background: var(--tab-bg); padding: 4px; border-radius: 12px;
+        }
+        .main-tabs button {
+            flex: 1; padding: 12px 24px; border: none; background: transparent;
+            border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 1rem;
+            color: var(--text-secondary); transition: all 0.2s;
+        }
+        .main-tabs button.active {
+            background: var(--card-bg); color: var(--text); box-shadow: 0 2px 6px var(--shadow);
+        }
+        .main-tabs button:hover:not(.active) { color: var(--text); }
+        .maintab-content { display: none; }
+        .maintab-content.active { display: block; }
+
+        /* ===== KB 管理面板 ===== */
+        .kb-group-header {
+            display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+            background: var(--output-bg); border-radius: 10px; margin-bottom: 8px;
+            font-weight: 600; font-size: 0.95rem; cursor: pointer;
+        }
+        .kb-group-header:hover { background: var(--border); }
+        .kb-group-header .expand-icon { transition: transform 0.2s; font-size: 0.8rem; }
+        .kb-group-header.collapsed .expand-icon { transform: rotate(-90deg); }
+        .kb-group-header.collapsed + .kb-items { display: none; }
+        .kb-items { margin-left: 20px; margin-bottom: 12px; }
+        .kb-item {
+            display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+            border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px;
+        }
+        .kb-item:hover { border-color: var(--accent); }
+        .kb-item .kb-info { flex: 1; }
+        .kb-item .kb-name { font-weight: 600; font-size: 0.9rem; }
+        .kb-item .kb-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
+        .kb-item .kb-actions, .kb-group-header .grp-actions { display: flex; gap: 4px; }
+        .kb-item .kb-actions button, .kb-group-header .grp-actions button {
+            font-size: 0.7rem; padding: 4px 10px; border: 1px solid var(--border);
+            border-radius: 5px; background: var(--card-bg); color: var(--text-secondary);
+            cursor: pointer;
+        }
+        .kb-item .kb-actions button:hover { background: var(--btn-secondary-hover); }
+        .kb-item .kb-actions .btn-del:hover { background: #fee2e2; color: #b91c1c; }
+        .kb-toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+
+        /* ===== KB 选择器 ===== */
+        .kb-selector {
+            display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px;
+        }
+        .kb-selector select {
+            padding: 6px 10px; border: 1px solid var(--input-border); border-radius: 6px;
+            font-size: 0.8rem; background: var(--input-bg); color: var(--text); min-width: 160px;
+        }
+        .kb-selector .selected-tags { display: flex; gap: 3px; flex-wrap: wrap; }
+        .kb-selector .kb-tag {
+            display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px;
+            background: var(--tm-badge-bg); color: var(--tm-badge-color);
+            border-radius: 12px; font-size: 0.72rem; cursor: pointer;
+        }
+
+        /* ===== 模态框 ===== */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+            display: flex; align-items: center; justify-content: center; z-index: 1000;
+        }
+        .modal-overlay.hidden { display: none; }
+        .modal {
+            background: var(--card-bg); border-radius: 14px; padding: 28px;
+            max-width: 500px; width: 90%; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+        }
+        .modal h3 { margin-bottom: 16px; font-size: 1.1rem; }
+        .modal label { display: block; font-size: 0.85rem; color: var(--text-secondary); margin: 10px 0 4px; }
+        .modal input, .modal select, .modal textarea {
+            width: 100%; padding: 8px 12px; border: 1px solid var(--input-border);
+            border-radius: 6px; font-size: 0.9rem; background: var(--input-bg); color: var(--text);
+        }
+        .modal .modal-actions { display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end; }
+
+        .example-btn {
+            font-size: 0.75rem;
+            padding: 4px 12px;
+            background: var(--btn-secondary);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            color: var(--text-secondary);
+        }
+        .example-btn:hover { background: var(--btn-secondary-hover); }
+        .full-width-card { grid-column: 1 / -1; }
+        .tm-match {
+            background: var(--tm-match-bg);
+            border-left: 3px solid var(--tm-match-border);
+            padding: 8px 12px;
+            margin-top: 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        .tm-match .label {
+            color: var(--tm-match-border);
+            font-weight: 600;
+        }
+        .tm-list { max-height: 300px; overflow-y: auto; }
+        .tm-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-light);
+            font-size: 0.85rem;
+        }
+        .tm-item .source { color: var(--text); }
+        .tm-item .target { color: var(--btn-success); }
+        .tm-item .count { color: var(--text-muted); font-size: 0.75rem; }
+        .tm-item .delete-btn {
+            float: right;
+            background: none;
+            border: none;
+            color: #b91c1c;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .checkbox-group {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin: 8px 0;
+        }
+        .checkbox-group label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+        .copy-btn {
+            font-size: 0.8rem;
+            padding: 4px 12px;
+            background: var(--btn-secondary);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: background 0.2s;
+        }
+        .copy-btn:hover { background: var(--btn-secondary-hover); }
+        .copy-btn.copied { background: var(--copy-copied-bg); color: var(--copy-copied-text); }
+        /* 暗色模式下底部面板适配 */
+        body.dark .tm-item .delete-btn { color: #f87171; }
+        body.dark .btn-warning { background: #d97706; color: white; }
+        body.dark .btn-danger { background: #dc2626; color: white; }
+
+        /* ===== 工具类（替代内联样式） ===== */
+        .empty-state {
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 20px;
+            font-size: 0.9rem;
+        }
+        .empty-state-sm {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            padding: 6px;
+        }
+        .kb-count {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .kb-default-hint {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .kb-select-btn {
+            font-size: 0.7rem;
+            padding: 3px 8px;
+        }
+        .ungrouped-header {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 6px;
+            color: var(--text-secondary);
+        }
+        .config-status-msg {
+            font-size: 0.85rem;
+        }
+        .config-status-msg.success { color: var(--status-success-text); }
+        .config-status-msg.error { color: var(--status-error-text); }
+        .config-status-msg.pending { color: var(--status-pending-text); }
+        .config-status-msg.muted { color: var(--text-secondary); }
+        .bge-status {
+            display: none;
+            grid-column: 1 / -1;
+            margin-top: 4px;
+            font-size: 0.85rem;
+        }
+        .bge-status-idle { color: var(--text-secondary); }
+        .bge-status-loading { color: var(--status-pending-text); }
+        .bge-status-ready { color: var(--status-success-text); }
+        .bge-status-error { color: var(--status-error-text); }
+        .config-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--input-border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background: var(--input-bg);
+            color: var(--text);
+        }
+        .config-select:focus {
+            outline: none;
+            border-color: var(--input-focus);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+        .config-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .config-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        .config-actions-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .required-mark {
+            color: var(--status-error-text);
+        }
+        .section-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .section-label-inline {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .mt-sm { margin-top: 8px; }
+        .mt-md { margin-top: 12px; }
+        .mb-sm { margin-bottom: 8px; }
+        .panel-card {
+            margin-top: 24px;
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border);
+        }
+        .panel-card-sm {
+            margin-top: 24px;
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .panel-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .panel-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .add-pair-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .add-pair-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 8px;
+        }
+        .text-input {
+            padding: 8px 12px;
+            border: 1px solid var(--input-border);
+            border-radius: 6px;
+            background: var(--input-bg);
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+        .text-input:focus {
+            outline: none;
+            border-color: var(--input-focus);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+        .search-input {
+            width: 200px;
+        }
+        .btn-sm {
+            font-size: 0.85rem;
+        }
+        .btn-add {
+            padding: 8px 16px;
+            font-size: 0.85rem;
+        }
+        .kb-status-label {
+            color: var(--text-secondary);
+        }
+
+        /* ===== KB 选择器模态框 ===== */
+        .kb-pick-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--text);
+        }
+        .kb-pick-item:hover {
+            background: var(--border-light);
+        }
+        .kb-pick-count {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .kb-pick-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 8px;
+        }
+        .kb-picker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header-row">
+        <h1>📚 智能翻译 · EPUB 工作台</h1>
+        <button type="button" class="theme-toggle" id="themeToggle" data-action="toggle-theme">🌙 暗色模式</button>
+    </div>
+
+    <!-- ===== 主标签栏 ===== -->
+    <div class="main-tabs" role="tablist" aria-label="主功能标签">
+        <button type="button" class="active" data-maintab="workspace" data-action="switch-main-tab" data-param="workspace" role="tab" aria-selected="true">📝 翻译工作台</button>
+        <button type="button" data-maintab="kbmanager" data-action="switch-main-tab" data-param="kbmanager" role="tab" aria-selected="false">📚 知识库管理</button>
+    </div>
+
+    <!-- ===== 翻译工作台 ===== -->
+    <div id="maintab-workspace" class="maintab-content active" role="tabpanel">
+
+    <!-- ===== API配置 ===== -->
+    <div class="api-config" id="apiConfig">
+        <div class="config-header">
+            <span class="config-title">🔑 API 配置</span>
+            <span id="apiStatusBadge" class="api-status pending">⏳ 未配置</span>
+        </div>
+        <div class="config-grid">
+            <div class="full-width">
+                <label>API Key <span class="required-mark">*</span></label>
+                <input type="password" id="apiKey" placeholder="sk-... 输入您的API密钥">
+            </div>
+            <div>
+                <label>API Base URL</label>
+                <input type="text" id="apiBaseUrl" placeholder="https://api.openai.com/v1" value="https://api.openai.com/v1">
+            </div>
+            <div>
+                <label>LLM 提供者</label>
+                <select id="llmProvider" data-change="llm-provider" class="config-select">
+                    <option value="openai">OpenAI API</option>
+                    <option value="local">本地模型 (Qwen2.5-1.5B)</option>
+                </select>
+            </div>
+            <div id="openaiModelGroup">
+                <label>模型名称</label>
+                <input type="text" id="apiModel" placeholder="gpt-4-turbo-preview" value="gpt-4-turbo-preview">
+            </div>
+            <div id="localModelConfig" style="display:none;">
+                <label>本地翻译模型</label>
+                <input type="text" id="localTranslateModel" placeholder="Qwen/Qwen2.5-1.5B-Instruct" value="Qwen/Qwen2.5-1.5B-Instruct">
+                <label style="margin-top:8px;">本地 EPUB 模型（留空则复用翻译模型）</label>
+                <input type="text" id="localEpubModel" placeholder="留空 = 复用翻译模型">
+            </div>
+            <div id="llmStatus" class="llm-status" style="display:none; grid-column:1/-1; margin-top:4px; font-size:0.85rem;">
+                <span id="llmStatusText" style="color:var(--text-secondary);"></span>
+            </div>
+            <div>
+                <label>Embedding 提供者</label>
+                <select id="embeddingProvider" data-change="embedding-provider" class="config-select">
+                    <option value="openai">OpenAI API</option>
+                    <option value="bge">BGE 本地模型 (BAAI/bge-base-zh-v1.5)</option>
+                </select>
+            </div>
+            <div id="openaiEmbeddingGroup">
+                <label>OpenAI Embedding 模型</label>
+                <input type="text" id="apiEmbedding" placeholder="text-embedding-ada-002" value="text-embedding-ada-002">
+            </div>
+            <div id="bgeStatus" class="bge-status">
+                <span id="bgeStatusText"></span>
+                <span id="bgeStatusSpinner" style="display:none;"> ⏳</span>
+            </div>
+            <div class="full-width config-actions-row">
+                <button type="button" class="btn btn-success" data-action="save-config">💾 保存并测试</button>
+                <button type="button" class="btn btn-secondary" data-action="clear-config">清除配置</button>
+                <span id="configStatus" class="config-status-msg muted"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard">
+
+        <!-- ===== 左侧：翻译 ===== -->
+        <div class="card">
+            <h2>🌍 世界史专家 <span class="agent-badge">翻译</span></h2>
+            <div class="subtitle">英文历史书籍 → 中文翻译，支持RAG知识库和翻译记忆库</div>
+
+            <textarea id="translateInput" placeholder="请输入英文历史段落...">The Treaty of Versailles, signed in 1919, imposed severe terms on Germany after World War I. It required Germany to accept responsibility for the war, pay massive reparations, and cede territory to neighboring nations.</textarea>
+
+            <div class="checkbox-group">
+                <label><input type="checkbox" id="translateTm" checked> 📖 启用翻译记忆库</label>
+                <label><input type="checkbox" id="translateRag" checked data-change="toggle-kb-selector" data-param="translate"> 📚 启用RAG知识库</label>
+            </div>
+            <div id="translateKbSelector" class="kb-selector">
+                <select id="translateGroupSelect" data-change="group-select" data-param="translate">
+                    <option value="">按分组: 全部知识库</option>
+                </select>
+                <div class="selected-tags" id="translateKbTags"></div>
+            </div>
+
+            <div class="btn-group">
+                <button type="button" class="btn" data-action="translate">翻译</button>
+                <button type="button" class="btn btn-secondary" data-action="clear-output" data-param="translationOutput">清空</button>
+            </div>
+            <div id="translationStatus" class="status"></div>
+            <div id="translationOutput" class="output-box"></div>
+
+            <div class="rag-section">
+                <div class="file-upload">
+                    <span class="section-label">上传知识文档：</span>
+                    <input type="file" id="translateKnowledgeFile" accept=".txt,.md">
+                    <button type="button" class="btn btn-secondary" data-action="upload-knowledge" data-param="世界史专家">上传</button>
+                </div>
+                <div id="translateKnowledgeList" class="knowledge-list"></div>
+            </div>
+        </div>
+
+        <!-- ===== 右侧：EPUB ===== -->
+        <div class="card">
+            <h2>📖 EPUB编辑 <span class="agent-badge">代码生成 / 替换</span></h2>
+
+            <div class="tab-group" role="tablist" aria-label="EPUB功能标签">
+                <button type="button" class="active" data-tab="generate" data-action="switch-tab" data-param="generate" role="tab" aria-selected="true">生成EPUB</button>
+                <button type="button" data-tab="replace" data-action="switch-tab" data-param="replace" role="tab" aria-selected="false">替换内容</button>
+            </div>
+
+            <!-- 生成EPUB标签 -->
+            <div id="tab-generate" class="tab-content active" role="tabpanel">
+                <div class="subtitle">根据中文内容生成EPUB代码</div>
+                <textarea id="epubInput" placeholder="请输入中文内容...">第一章 和平的代价
+
+1919年6月28日，德国代表在凡尔赛宫镜厅签署了《凡尔赛条约》。</textarea>
+                <div class="btn-group">
+                    <button type="button" class="btn" data-action="generate-epub">生成EPUB</button>
+                    <button type="button" class="btn btn-secondary" data-action="clear-output" data-param="epubOutput">清空</button>
+                </div>
+                <div id="epubStatus" class="status"></div>
+                <div id="epubOutput" class="output-box"></div>
+            </div>
+
+            <!-- 替换内容标签 -->
+            <div id="tab-replace" class="tab-content" role="tabpanel">
+                <div class="subtitle">将新译文替换到现有EPUB代码中</div>
+                <div class="mb-sm">
+                    <span class="section-label-inline">新译文：</span>
+                    <button type="button" class="example-btn" data-action="load-example-translation">加载示例</button>
+                </div>
+                <textarea id="replaceTranslation" placeholder="输入新的译文..."></textarea>
+                <div class="mt-md mb-sm">
+                    <span class="section-label-inline">EPUB代码（包含HTML标签）：</span>
+                    <button type="button" class="example-btn" data-action="load-example-epub">加载示例</button>
+                </div>
+                <textarea id="replaceEpubCode" placeholder="粘贴EPUB代码..."></textarea>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-warning" data-action="replace-epub">🔄 替换内容</button>
+                    <button type="button" class="btn btn-secondary" data-action="clear-output" data-param="replaceOutput">清空</button>
+                </div>
+                <div id="replaceStatus" class="status"></div>
+                <div id="replaceOutput" class="output-box"></div>
+            </div>
+
+            <div class="rag-section">
+                <label><input type="checkbox" id="epubRag" checked data-change="toggle-kb-selector" data-param="epub"> 启用RAG知识库</label>
+                <div id="epubKbSelector" class="kb-selector">
+                    <select id="epubGroupSelect" data-change="group-select" data-param="epub">
+                        <option value="">按分组: 全部知识库</option>
+                    </select>
+                    <div class="selected-tags" id="epubKbTags"></div>
+                </div>
+                <div class="file-upload">
+                    <span class="section-label">上传知识文档：</span>
+                    <input type="file" id="epubKnowledgeFile" accept=".txt,.md,.xml">
+                    <button type="button" class="btn btn-secondary" data-action="upload-knowledge" data-param="EPUB编辑">上传</button>
+                </div>
+                <div id="epubKnowledgeList" class="knowledge-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 翻译记忆库管理 ===== -->
+    <div class="panel-card">
+        <div class="panel-header">
+            <div>
+                <h3>📖 翻译记忆库 <span class="tm-badge" id="tmCount">0 条</span></h3>
+                <div class="panel-subtitle">存储历史翻译，保证翻译一致性</div>
+            </div>
+            <div class="panel-actions">
+                <button type="button" class="btn btn-secondary" data-action="search-tm">🔍 搜索</button>
+                <input type="text" id="tmSearchInput" class="text-input search-input" placeholder="搜索翻译...">
+                <button type="button" class="btn btn-danger btn-sm" data-action="clear-tm">清空全部</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-action="refresh-tm">刷新</button>
+            </div>
+        </div>
+
+        <div id="tmList" class="tm-list">
+            <div class="empty-state">暂无翻译记忆，开始翻译后会自动积累</div>
+        </div>
+
+        <!-- 手动添加翻译 -->
+        <div class="add-pair-section">
+            <div class="panel-subtitle mb-sm">手动添加翻译对：</div>
+            <div class="add-pair-grid">
+                <input type="text" id="tmAddSource" class="text-input" placeholder="原文 (英文)">
+                <input type="text" id="tmAddTarget" class="text-input" placeholder="译文 (中文)">
+                <button type="button" class="btn btn-success btn-add" data-action="add-tm-pair">添加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 底部：知识库状态 ===== -->
+    <div class="panel-card-sm">
+        <div><strong>📂 知识库状态</strong></div>
+        <div class="panel-actions">
+            <div><span class="kb-status-label">世界史专家：</span><span id="kbHistCount">0</span> 条</div>
+            <div><span class="kb-status-label">EPUB编辑：</span><span id="kbEpubCount">0</span> 条</div>
+        </div>
+        <button type="button" class="btn btn-secondary" data-action="refresh-knowledge">刷新</button>
+    </div>
+</div><!-- end maintab-workspace -->
+
+<!-- ===== 知识库管理 ===== -->
+<div id="maintab-kbmanager" class="maintab-content" role="tabpanel">
+    <div class="card full-width-card">
+        <div class="config-header">
+            <h2>📚 知识库管理</h2>
+            <div class="kb-toolbar">
+                <button type="button" class="btn btn-success" data-action="show-kb-modal">+ 新建知识库</button>
+                <button type="button" class="btn btn-secondary" data-action="show-group-modal">+ 新建分组</button>
+                <button type="button" class="btn btn-secondary" data-action="refresh-kb-manager">🔄 刷新</button>
+            </div>
+        </div>
+        <div class="subtitle">管理知识库与分组，为智能体分配检索资源</div>
+        <div id="kbManagerContent">
+            <div class="empty-state">加载中...</div>
+        </div>
+    </div>
+</div><!-- end maintab-kbmanager -->
+
+<!-- KB/Group 模态框 -->
+<div id="kbModalOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="kbModalTitle">
+    <div class="modal">
+        <h3 id="kbModalTitle">新建知识库</h3>
+        <input type="hidden" id="kbModalEditId">
+        <label>名称</label>
+        <input type="text" id="kbModalName" placeholder="知识库名称">
+        <label>描述</label>
+        <textarea id="kbModalDesc" placeholder="知识库描述（可选）" rows="2"></textarea>
+        <label>嵌入模型</label>
+        <select id="kbModalEmbedding">
+            <option value="">跟随全局设置</option>
+            <option value="bge">BGE 本地模型</option>
+            <option value="openai">OpenAI API</option>
+        </select>
+        <label>所属分组</label>
+        <select id="kbModalGroup">
+            <option value="">无分组</option>
+        </select>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-action="hide-kb-modal">取消</button>
+            <button type="button" class="btn btn-success" id="kbModalSaveBtn" data-action="save-kb-modal">创建</button>
+        </div>
+    </div>
+</div>
+
+<div id="groupModalOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="groupModalTitle">
+    <div class="modal">
+        <h3 id="groupModalTitle">新建分组</h3>
+        <input type="hidden" id="groupModalEditId">
+        <label>分组名称</label>
+        <input type="text" id="groupModalName" placeholder="分组名称">
+        <label>描述</label>
+        <textarea id="groupModalDesc" placeholder="分组描述（可选）" rows="2"></textarea>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-action="hide-group-modal">取消</button>
+            <button type="button" class="btn btn-success" id="groupModalSaveBtn" data-action="save-group-modal">创建</button>
+        </div>
+    </div>
+</div>
+
+<!-- KB 选择器模态框 -->
+<div id="kbPickerOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="选择知识库">
+    <div class="modal">
+        <div class="kb-picker-header">
+            <h3>选择要使用的知识库（可多选）</h3>
+            <button type="button" class="btn btn-secondary btn-sm" data-action="toggle-kb-picker-all">全选/取消</button>
+        </div>
+        <div id="kbPickerList" class="kb-pick-list"></div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-action="hide-kb-picker">取消</button>
+            <button type="button" class="btn btn-success" data-action="confirm-kb-picker">确定</button>
+        </div>
+    </div>
+</div>
+
+</div><!-- end container -->
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>
