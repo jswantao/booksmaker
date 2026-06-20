@@ -123,7 +123,10 @@ class TranslationMemory:
                 stored = meta.get("embedding_provider", "unknown")
                 current = EmbeddingManager().provider
                 if current and stored != current.provider_name:
-                    print(f"TM vector mismatch: stored={stored}, current={current.provider_name}")
+                    if stored == "unknown":
+                        collection.modify(metadata={"embedding_provider": current.provider_name, "embedding_model": current.model_name})
+                    else:
+                        print(f"TM vector mismatch: stored={stored}, current={current.provider_name}")
             except Exception: pass
 
             results = collection.query(query_embeddings=[query_embedding], n_results=min(n_results * 2, 20))

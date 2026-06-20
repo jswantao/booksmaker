@@ -9,6 +9,6 @@ class Agent(BaseModel):
     tools: List[Union[str, Dict[str, Any]]] = []
     input_format: str = ""
     output_format: str = ""
-    error_handling: Dict[str, str] = {}
-    examples: Optional[List[Dict[str, str]]] = None
-    batch_config: Optional[Dict[str, str]] = None
+    error_handling: Dict[str, Any] = {}
+    examples: Optional[List[Dict[str, Any]]] = None
+    batch_config: Optional[Dict[str, Any]] = None

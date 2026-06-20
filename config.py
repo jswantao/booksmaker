@@ -3,6 +3,9 @@
 
 import os
 
+# 关闭 ChromaDB 烦人的匿名遥测报错日志
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
 class Config:
     CHROMA_DB_PATH = "./chroma_db"
     UPLOAD_DIR = "./uploads"

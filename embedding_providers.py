@@ -122,11 +122,18 @@ class BGEEmbeddingProvider(EmbeddingProvider):
 
             self._load_status = "downloading"
             try:
+                import torch
                 from sentence_transformers import SentenceTransformer
                 self._load_status = "loading"
+                
+                if self._device is None or self._device == "auto":
+                    target_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+                else:
+                    target_device = self._device
+                    
                 self._model = SentenceTransformer(
                     self._model_id,
-                    device=self._device
+                    device=target_device
                 )
                 self._load_status = "ready"
             except ImportError:

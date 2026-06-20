@@ -118,7 +118,13 @@ class TransformersLLMProvider(LLMProvider):
 
                 # 加载模型
                 import torch
-                load_kwargs = {"device_map": "auto" if self._device is None else self._device,
+                # 默认优先强制使用纯显存 (cuda:0) 直接加载运行，避免占用内存，解决系统内存高压、显存利用率低的问题
+                if self._device is None or self._device == "auto":
+                    target_device = "cuda:0" if torch.cuda.is_available() else "cpu"
+                else:
+                    target_device = self._device
+
+                load_kwargs = {"device_map": target_device,
                                "trust_remote_code": True}
                 if self._load_in_8bit:
                     load_kwargs["load_in_8bit"] = True

@@ -81,10 +81,8 @@ async def add_tm(request: Request, source: Optional[str] = Form(None), target: O
         ok = tm_instance.add(src, tgt, ctx)
         if ok:
             try:
-                client = get_client()
-                mc = get_model_config()
-                resp = client.embeddings.create(model=mc["embedding_model"], input=[src])
-                tm_instance.add_embedding(src, tgt, resp.data[0].embedding, context=ctx)
+                emb = EmbeddingManager().embed([src], is_query=False)[0]
+                tm_instance.add_embedding(src, tgt, emb, context=ctx)
             except Exception as e:
                 print(f"Manual TM embedding add failed: {e}")
         return {"success": ok}

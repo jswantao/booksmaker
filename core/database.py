@@ -5,6 +5,18 @@ import threading
 from pathlib import Path
 import chromadb
 from chromadb.config import Settings
+
+# 彻底拦截并静默 ChromaDB 底层 telemetry 捕获报错日志
+try:
+    import chromadb.telemetry.product
+    chromadb.telemetry.product.ProductTelemetry.capture = lambda self, *args, **kwargs: None
+except Exception:
+    pass
+try:
+    import chromadb.telemetry.core
+    chromadb.telemetry.core.Telemetry.capture = lambda self, *args, **kwargs: None
+except Exception:
+    pass
 from config import Config
 
 config = Config()
