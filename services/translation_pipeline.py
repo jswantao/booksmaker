@@ -19,7 +19,6 @@ from services.context_budget import ContextBudget
 from services.document_processor import DocumentProcessor, read_document
 from services.memory_bank_manager import memory_bank_manager
 from services.hybrid_search import HybridSearcher, hybrid_query_multiple
-from services.translate_optimizer import enhance_translation
 from model_providers import LLMManager
 
 
@@ -83,14 +82,7 @@ class TranslationPipeline:
     """
 
     DEFAULT_SYSTEM_PROMPT = (
-        "你是世界史学术翻译专家。将以下英文历史文本翻译为严谨的中文学术文献。\n"
-        "要求：\n"
-        "1. 准确忠实原文，不增不减不意译\n"
-        "2. 专有名词使用公认学术译名，首次出现可加注原文\n"
-        "3. 保持学术严谨风格，句式符合中文历史学规范\n"
-        "4. 日期格式统一为「1919年6月28日」\n"
-        "5. 引文用「」标记，书名用《》标记\n"
-        "⚠️ 只输出译文本身，禁止添加任何总结、评论、分析或「这段文字讲述了…」等段落。"
+        
     )
 
     def __init__(self, memory_path: str,
