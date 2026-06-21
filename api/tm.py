@@ -62,7 +62,6 @@ async def delete_tm(tm_id: int):
 
 
 @router.post("/api/tm")
-@router.post("/api/tm/add")
 async def add_tm(request: Request, source: Optional[str] = Form(None), target: Optional[str] = Form(None), context: Optional[str] = Form(None)):
     try:
         src, tgt, ctx = source, target, context

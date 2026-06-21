@@ -24,6 +24,8 @@ async def set_config(req: ApiConfigRequest):
     # 保存环境变量驱动的配置（clear 前备份，避免丢失）
     _saved_4bit = user_api_config.get("local_load_in_4bit", True)
     _saved_8bit = user_api_config.get("local_load_in_8bit", False)
+    _saved_dl_source = user_api_config.get("download_source", "huggingface")
+    _saved_ms_cache = user_api_config.get("modelscope_cache_dir", "")
     # 使用 dict.update() 而非 = 重新绑定，保持跨模块引用一致性
     user_api_config.clear()
     user_api_config.update({
@@ -33,6 +35,8 @@ async def set_config(req: ApiConfigRequest):
         "llm_provider": req.llm_provider,
         "local_translate_model": req.local_translate_model,
         "local_epub_model": req.local_epub_model,
+        "download_source": req.download_source,
+        "modelscope_cache_dir": req.modelscope_cache_dir,
         "local_load_in_4bit": _saved_4bit,
         "local_load_in_8bit": _saved_8bit,
     })
@@ -72,6 +76,8 @@ async def get_config():
         "llm_provider": user_api_config.get("llm_provider", "openai"),
         "local_translate_model": user_api_config.get("local_translate_model", ""),
         "local_epub_model": user_api_config.get("local_epub_model", ""),
+        "download_source": user_api_config.get("download_source", "huggingface"),
+        "modelscope_cache_dir": user_api_config.get("modelscope_cache_dir", ""),
         "is_configured": bool(user_api_config.get("api_key") or user_api_config.get("llm_provider") == "local")
     }
 

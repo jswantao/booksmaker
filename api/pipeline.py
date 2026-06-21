@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 
 from services.translation_pipeline import TranslationPipeline
-from services.memory_bank import MemoryBank
+from services.memory_bank_manager import memory_bank_manager
 from services.knowledge_manager import kb_manager
 from services.document_processor import read_document
 from config import user_api_config
@@ -32,7 +32,7 @@ class BuildKBRequest(BaseModel):
 
 class RunPipelineRequest(BaseModel):
     file_path: str
-    kb_name: str
+    kb_ids: List[str] = []           # 外部知识库ID列表（可选，为空则无KB检索）
     memory_path: str = ""
     resume_from: int = 0
     auto_save_interval: int = 10
@@ -51,11 +51,11 @@ class StitchRequest(BaseModel):
 # ---- 文件上传 ----
 @router.post("/api/pipeline/upload")
 async def upload_file(file: UploadFile = File(...)):
-    """上传文档文件（TXT/PDF），返回保存路径"""
-    allowed_exts = {'.txt', '.md', '.text', '.pdf'}
+    """上传文档文件（TXT/PDF/EPUB），返回保存路径"""
+    allowed_exts = {'.txt', '.md', '.text', '.pdf', '.epub'}
     ext = Path(file.filename).suffix.lower()
     if ext not in allowed_exts:
-        return {"success": False, "error": f"不支持的文件类型: {ext}，仅支持 TXT/PDF"}
+        return {"success": False, "error": f"不支持的文件类型: {ext}，仅支持 TXT/PDF/EPUB"}
 
     upload_dir = Path("uploads/pipeline")
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -126,9 +126,7 @@ def _build_kb(file_path: str, kb_name: str, chunk_size: int, overlap: int):
 @router.post("/api/pipeline/memory/init")
 async def init_memory(req: MemoryInitRequest):
     """初始化或重置记忆库"""
-    mem = MemoryBank(req.memory_path)
-    if req.project:
-        mem.data["project"] = req.project
+    mem = memory_bank_manager.load_from_path(req.memory_path, req.project)
     if req.terminology:
         mem.add_terms_batch(req.terminology)
     mem._save()
@@ -141,7 +139,7 @@ async def get_memory(memory_path: str):
     """获取记忆库状态"""
     if not Path(memory_path).exists():
         return {"success": False, "error": "记忆库不存在"}
-    mem = MemoryBank(memory_path)
+    mem = memory_bank_manager.load_from_path(memory_path)
     return {"success": True,
             "project": mem.data.get("project", ""),
             "progress": mem.data.get("progress", {}),
@@ -149,86 +147,88 @@ async def get_memory(memory_path: str):
             "chunks_done": len(mem.data.get("translated_chunks", [])),
             "is_done": mem.is_done(),
             "completed_chapters": mem.data.get("completed_chapters", []),
-            "core_arguments": len(mem.data.get("core_arguments", [])),
             "recent_summaries": len(mem.data.get("recent_summaries", []))}
 
 
 # ---- 主流水线 ----
 @router.post("/api/pipeline/run")
 async def run_pipeline(req: RunPipelineRequest, background: BackgroundTasks):
-    """启动翻译流水线（后台执行）"""
+    """启动翻译流水线（后台执行）。v2: KB 与源文件分离，KB 可选。"""
     if not Path(req.file_path).exists():
         return {"success": False, "error": f"文件不存在: {req.file_path}"}
 
-    # Find KB collection
-    existing = kb_manager.get_all_kbs()
-    target = next((k for k in existing if k['name'] == req.kb_name), None)
-    if not target:
-        return {"success": False, "error":
-                f"知识库不存在: {req.kb_name}，请先调用 /api/pipeline/build-kb"}
+    # 解析 KB：获取 collection_name 列表
+    kb_collections = []
+    if req.kb_ids:
+        kbs = kb_manager.get_kbs_by_ids(req.kb_ids)
+        kb_collections = [k['collection_name'] for k in kbs if k.get('collection_name')]
+        if req.kb_ids and not kb_collections:
+            print(f"[Pipeline] WARN: 指定的 KB ID 无效或无 collection: {req.kb_ids}")
 
     memory_path = req.memory_path or f"memory/{Path(req.file_path).stem}_memory.json"
-    pipeline = TranslationPipeline(req.kb_name, memory_path)
-    _active_pipelines[req.kb_name] = pipeline
+    pipeline_id = Path(memory_path).stem  # 用记忆库名作为 pipeline 标识
+
+    pipeline = TranslationPipeline(
+        memory_path=memory_path,
+        kb_collections=kb_collections,
+        kb_ids=req.kb_ids,
+    )
+    _active_pipelines[pipeline_id] = pipeline
 
     def _run():
         try:
             result = pipeline.run(
                 file_path=req.file_path,
-                kb_collection=target['collection_name'],
                 resume_from=req.resume_from,
                 auto_save_interval=req.auto_save_interval
             )
-            _pipeline_results[req.kb_name] = result
+            _pipeline_results[pipeline_id] = result
         except Exception as e:
-            _pipeline_results[req.kb_name] = f"[错误] {e}"
+            _pipeline_results[pipeline_id] = f"[错误] {e}"
             print(f"[Pipeline] Fatal error: {e}")
 
     thread = threading.Thread(target=_run, daemon=True)
-    _pipeline_threads[req.kb_name] = thread
+    _pipeline_threads[pipeline_id] = thread
     thread.start()
 
     return {"success": True, "message": "翻译流水线已启动",
-            "kb_name": req.kb_name, "memory_path": memory_path}
+            "pipeline_id": pipeline_id, "memory_path": memory_path,
+            "kb_count": len(kb_collections)}
 
 
-@router.post("/api/pipeline/pause/{kb_name}")
-async def pause_pipeline(kb_name: str):
-    """暂停流水线"""
-    pipe = _active_pipelines.get(kb_name)
+@router.post("/api/pipeline/pause/{pipeline_id}")
+async def pause_pipeline(pipeline_id: str):
+    pipe = _active_pipelines.get(pipeline_id)
     if pipe:
         pipe.pause()
         return {"success": True, "message": "已暂停"}
     return {"success": False, "error": "流水线未运行"}
 
 
-@router.post("/api/pipeline/resume/{kb_name}")
-async def resume_pipeline(kb_name: str):
-    """恢复流水线"""
-    pipe = _active_pipelines.get(kb_name)
+@router.post("/api/pipeline/resume/{pipeline_id}")
+async def resume_pipeline(pipeline_id: str):
+    pipe = _active_pipelines.get(pipeline_id)
     if pipe:
         pipe.resume()
         return {"success": True, "message": "已恢复"}
     return {"success": False, "error": "流水线未运行"}
 
 
-@router.get("/api/pipeline/status/{kb_name}")
-async def pipeline_status(kb_name: str):
-    """查询流水线状态"""
-    pipe = _active_pipelines.get(kb_name)
+@router.get("/api/pipeline/status/{pipeline_id}")
+async def pipeline_status(pipeline_id: str):
+    pipe = _active_pipelines.get(pipeline_id)
     if pipe:
         progress = pipe.get_progress()
         progress["running"] = True
-        progress["has_result"] = kb_name in _pipeline_results
+        progress["has_result"] = pipeline_id in _pipeline_results
         return {"success": True, **progress}
     return {"success": True, "running": False,
             "message": "流水线未运行，可通过 /api/pipeline/memory/ 查询记忆库状态"}
 
 
-@router.get("/api/pipeline/result/{kb_name}")
-async def pipeline_result(kb_name: str):
-    """获取流水线最终结果"""
-    result = _pipeline_results.get(kb_name)
+@router.get("/api/pipeline/result/{pipeline_id}")
+async def pipeline_result(pipeline_id: str):
+    result = _pipeline_results.get(pipeline_id)
     if result:
         return {"success": True, "output": result}
     return {"success": False, "error": "翻译尚未完成或流水线未运行"}
@@ -241,7 +241,7 @@ async def stitch(req: StitchRequest):
     if not Path(req.memory_path).exists():
         return {"success": False, "error": "记忆库不存在"}
 
-    mem = MemoryBank(req.memory_path)
+    mem = memory_bank_manager.load_from_path(req.memory_path)
     if not mem.is_done():
         return {"success": False,
                 "error": "翻译尚未完成，请等待所有分段翻译完毕后执行缝合",

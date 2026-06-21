@@ -2,11 +2,12 @@
 // ES Module: 导入所有业务模块，绑定事件，启动应用
 import { Elements, cacheElements, initEvents } from './dom.js';
 import { initTheme, toggleTheme } from './modules/theme.js';
-import { loadConfig, saveConfig, clearConfig, toggleApiConfig, onEmbeddingProviderChange, onLlmProviderChange } from './modules/config-panel.js';
+import { loadConfig, saveConfig, clearConfig, toggleApiConfig, onEmbeddingProviderChange, onLlmProviderChange, onDownloadSourceChange } from './modules/config-panel.js';
 import { submitTask } from './modules/translator.js';
 import { getClickHandlers, getChangeHandlers, refreshKBManager, refreshKbSelectors } from './modules/kb-manager.js';
 import { refreshTm, deleteTm, clearTm, searchTm, addTmPair, refreshKnowledge, scheduleTmPoll, scheduleKbPoll } from './modules/tm-manager.js';
 import { getPipelineClickHandlers } from './modules/pipeline.js';
+import { getMemoryClickHandlers, setupMemoryListeners, onMemoryTabVisible } from './modules/memory-bank.js';
 import { switchTab, switchMainTab, clearOutput, copyOutput } from './ui.js';
 import { AppState } from './state.js';
 
@@ -16,13 +17,17 @@ function buildClickHandlers() {
         {
             'toggle-theme':          () => toggleTheme(),
             'toggle-api-config':     () => toggleApiConfig(),
-            'switch-main-tab':       (el) => switchMainTab(el.dataset.param),
+            'switch-main-tab':       (el) => {
+                const tab = el.dataset.param;
+                switchMainTab(tab);
+                if (tab === 'kbmanager') refreshKBManager();
+                if (tab === 'memory') onMemoryTabVisible();
+            },
             'switch-tab':            (el) => switchTab(el.dataset.param),
             'save-config':           () => saveConfig(),
             'clear-config':          () => clearConfig(),
             'translate':             (el) => submitTask('translate', el),
-            'generate-epub':         (el) => submitTask('generate-epub', el),
-            'replace-epub':          (el) => submitTask('replace-epub', el),
+            'epub-replace':          (el) => submitTask('epub-replace', el),
             'clear-output':          (el) => clearOutput(el.dataset.param),
             'copy-output':           (el) => copyOutput(el.dataset.param),
             'search-tm':             () => searchTm(),
@@ -41,7 +46,8 @@ function buildClickHandlers() {
             },
         },
         getClickHandlers(),
-        getPipelineClickHandlers()
+        getPipelineClickHandlers(),
+        getMemoryClickHandlers()
     );
 }
 
@@ -50,6 +56,7 @@ function buildChangeHandlers() {
         {
             'embedding-provider': () => onEmbeddingProviderChange(),
             'llm-provider':        () => onLlmProviderChange(),
+            'download-source':     () => onDownloadSourceChange(),
         },
         getChangeHandlers()
     );
@@ -79,6 +86,7 @@ function onKeyDown(e) {
         const target = e.target;
         if (target.id === 'tmSearchInput') { e.preventDefault(); searchTm(); }
         else if (target.id === 'tmAddSource' || target.id === 'tmAddTarget') { e.preventDefault(); addTmPair(); }
+        else if (target.id === 'memorySearchInput') { e.preventDefault(); onMemoryTabVisible(); }
     }
 }
 
@@ -98,6 +106,9 @@ function init() {
         change: buildChangeHandlers(),
         visibilityChange: onVisibilityChange,
     });
+
+    // 记忆库面板额外监听器（搜索输入框防抖、文件导入）
+    setupMemoryListeners();
 
     // 额外键盘事件
     document.addEventListener('keydown', onKeyDown);

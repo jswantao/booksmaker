@@ -13,8 +13,9 @@ def sync_embedding_manager():
 
     if provider_type == "bge":
         model_id = user_api_config.get("bge_model_id", "BAAI/bge-base-zh-v1.5")
-        manager.configure_bge(model_id=model_id)
-        print(f"Embedding provider: BGE ({model_id})")
+        download_source = user_api_config.get("download_source", "huggingface")
+        manager.configure_bge(model_id=model_id, download_source=download_source)
+        print(f"Embedding provider: BGE ({model_id}, source={download_source})")
     else:
         if not user_api_config.get("api_key"):
             print("Embedding provider: OpenAI (no API key configured)")

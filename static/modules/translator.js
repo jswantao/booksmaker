@@ -1,11 +1,10 @@
 // modules/translator.js — 翻译面板 + 通用提交流程
 import { Elements, $ } from '../dom.js';
 import { API_PATH } from '../config.js';
-import { callTranslate, callGenerateEpub, callReplaceEpub, fetchAPI } from '../api.js';
+import { callTranslate, callEpubReplace } from '../api.js';
 import { showStatus, setBtnLoading, isBtnLoading, renderEpubOutput } from '../ui.js';
-import { escapeHtml, computeHash, adjustInterval } from '../utils.js';
+import { escapeHtml } from '../utils.js';
 import { AppState } from '../state.js';
-import { POLL_CONFIG } from '../config.js';
 
 // ---- RAG 参数 ----
 function getSelectedKbGroupId(panel) {
@@ -34,7 +33,8 @@ const TASK_CONFIGS = {
         buildBody(inputs) {
             const useRag = $('translateRag')?.checked ?? true;
             const useTm  = $('translateTm')?.checked ?? true;
-            const body = { text: inputs[0].el.value.trim(), use_rag: useRag, use_tm: useTm };
+            const bookName = $('translateBookName')?.value?.trim() || '';
+            const body = { text: inputs[0].el.value.trim(), use_rag: useRag, use_tm: useTm, book_name: bookName };
             if (useRag) addRagParams(body, 'translate', AppState.selectedTranslateKbs);
             return body;
         },
@@ -45,33 +45,20 @@ const TASK_CONFIGS = {
             } else if (result.tm_references?.length) {
                 output += `<div class="tm-match">📖 <span class="label">参考了 ${result.tm_references.length} 条翻译记忆</span></div>`;
             }
+            if (result.memory_terms) {
+                output += `<div class="tm-match" style="background:var(--tm-badge-bg);border-left-color:var(--tm-badge-color);">🧠 <span class="label">记忆库术语：${result.memory_terms} 条</span></div>`;
+            }
             output += `<div class="mt-sm"><button class="btn btn-secondary copy-btn" data-action="copy-output" data-param="translationOutput">📋 复制译文</button></div>`;
             Elements.translationOutput.innerHTML = output;
         },
         onSuccess() { /* trigger TM refresh - handled by caller */ }
     },
-    'generate-epub': {
-        statusId:   'epubStatus',
-        outputElKey:'epubOutput',
-        url:        API_PATH.generateEpub,
-        loadingStatus:'生成中...',
-        loadingHtml: '⏳ 正在生成EPUB代码...',
-        successStatus:'✅ EPUB代码生成成功',
-        getInputs() {
-            return [{ el: $('epubInput'), message: '请输入内容' }];
-        },
-        buildBody(inputs) {
-            return { content: inputs[0].el.value.trim(), user_epub_code: null };
-        },
-        renderSuccess(result) { renderEpubOutput(result, 'epubOutput'); }
-    },
-    'replace-epub': {
+    'epub-replace': {
         statusId:   'replaceStatus',
         outputElKey:'replaceOutput',
-        url:        API_PATH.replaceEpub,
         loadingStatus:'替换中...',
-        loadingHtml: '⏳ 正在替换内容...',
-        successStatus:'✅ 替换成功！',
+        loadingHtml: 'EPUB编辑正在替换内容...',
+        successStatus:'替换成功',
         getInputs() {
             return [
                 { el: $('replaceTranslation'), message: '请输入新译文' },
@@ -110,8 +97,7 @@ export async function submitTask(configKey, actionEl) {
         // 根据任务类型选择合适的 API 函数
         let result;
         if (configKey === 'translate') result = await callTranslate(body);
-        else if (configKey === 'generate-epub') result = await callGenerateEpub(body);
-        else result = await callReplaceEpub(body);
+        else result = await callEpubReplace(body);
         if (result.success) {
             config.renderSuccess(result);
             showStatus(config.statusId, config.successStatus, 'success');

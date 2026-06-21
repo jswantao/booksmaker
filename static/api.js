@@ -71,12 +71,8 @@ export function callTranslate(body) {
     return fetchAPI(API_PATH.translate, body);
 }
 
-export function callGenerateEpub(body) {
-    return fetchAPI(API_PATH.generateEpub, body);
-}
-
-export function callReplaceEpub(body) {
-    return fetchAPI(API_PATH.replaceEpub, body);
+export function callEpubReplace(body) {
+    return fetchAPI(API_PATH.epubReplace, body);
 }
 
 // ---- 翻译记忆 API ----
@@ -168,9 +164,9 @@ export function pipelineBuildKb(filePath, kbName, chunkSize, overlap) {
     });
 }
 
-export function pipelineRun(filePath, kbName, memoryPath, resumeFrom, autoSaveInterval) {
+export function pipelineRun(filePath, kbIds, memoryPath, resumeFrom, autoSaveInterval) {
     return fetchAPI(API_PATH.pipelineRun, {
-        file_path: filePath, kb_name: kbName,
+        file_path: filePath, kb_ids: kbIds || [],
         memory_path: memoryPath || '',
         resume_from: resumeFrom || 0,
         auto_save_interval: autoSaveInterval || 10
@@ -210,4 +206,18 @@ export function pipelineStitch(memoryPath) {
 
 export function pipelineListKbs() {
     return fetchGET(API_PATH.pipelineKbs);
+}
+
+// ---- 术语知识库 API ----
+export function listTerms(search) {
+    const url = API_PATH.terminology + (search ? '?search=' + encodeURIComponent(search) : '');
+    return fetchGET(url);
+}
+
+export function addTerm(enTerm, zhTerm) {
+    return fetchAPI(API_PATH.terminology, { en_term: enTerm, zh_term: zhTerm });
+}
+
+export function deleteTerm(enTerm) {
+    return fetchDELETE(API_PATH.terminology + '/' + encodeURIComponent(enTerm));
 }

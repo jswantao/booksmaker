@@ -11,11 +11,6 @@ class ConfigError(Exception):
     pass
 
 
-class KnowledgeError(Exception):
-    """知识库操作错误"""
-    pass
-
-
 # ---- 客户端工厂 ----
 def get_client():
     """获取 OpenAI 客户端实例。若未配置 API key 则抛出 ConfigError。"""
@@ -43,28 +38,35 @@ def sync_llm_manager():
     provider_type = user_api_config.get("llm_provider", "openai")
 
     if provider_type == "local":
-        translate_model = user_api_config.get("local_translate_model", "Qwen/Qwen2-7B-Instruct-GPTQ-Int4")
+        translate_model = user_api_config.get("local_translate_model", "Qwen/Qwen2-7B-Instruct")
         epub_model = user_api_config.get("local_epub_model", "") or translate_model
         load_in_4bit = user_api_config.get("local_load_in_4bit", True)
         load_in_8bit = user_api_config.get("local_load_in_8bit", False)
+        download_source = user_api_config.get("download_source", "huggingface")
+        ms_cache_dir = user_api_config.get("modelscope_cache_dir", "")
 
         from model_providers import TransformersLLMProvider
         trans_provider = TransformersLLMProvider(translate_model,
                                                   load_in_8bit=load_in_8bit,
-                                                  load_in_4bit=load_in_4bit)
+                                                  load_in_4bit=load_in_4bit,
+                                                  download_source=download_source,
+                                                  modelscope_cache_dir=ms_cache_dir)
         manager.set_provider("translate", trans_provider)
         manager.set_provider("default", trans_provider)
 
         if epub_model != translate_model:
             epub_provider = TransformersLLMProvider(epub_model,
                                                      load_in_8bit=load_in_8bit,
-                                                     load_in_4bit=load_in_4bit)
+                                                     load_in_4bit=load_in_4bit,
+                                                     download_source=download_source,
+                                                     modelscope_cache_dir=ms_cache_dir)
             manager.set_provider("epub", epub_provider)
         else:
             manager.set_provider("epub", trans_provider)
 
-        mode = "4-bit GPTQ" if load_in_4bit else ("8-bit" if load_in_8bit else "FP16")
-        print(f"LLM provider: Local (translate={translate_model}, epub={epub_model}, {mode})")
+        mode = "4-bit" if load_in_4bit else ("8-bit" if load_in_8bit else "FP16")
+        src = "ModelScope" if download_source == "modelscope" else "HF"
+        print(f"LLM provider: Local (translate={translate_model}, epub={epub_model}, {mode}, source={src})")
     else:
         if not user_api_config.get("api_key"):
             print("LLM provider: OpenAI (no API key configured)")

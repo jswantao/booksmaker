@@ -69,32 +69,6 @@ def query_knowledge(collection_name: str, query: str, n_results: int = 3) -> Lis
         return []
 
 
-def query_multiple_knowledge(kb_ids: List[str], query: str, n_results: int = 3) -> List[Dict]:
-    if not kb_ids: return []
-    from services.knowledge_manager import kb_manager  # deferred import
-    kbs = kb_manager.get_kbs_by_ids(kb_ids)
-    if not kbs: return []
-
-    collection_map = {kb["id"]: kb["collection_name"] for kb in kbs}
-    kb_name_map = {kb["id"]: kb["name"] for kb in kbs}
-    all_results, seen_hashes = [], set()
-
-    for kb_id, col_name in collection_map.items():
-        try:
-            docs = query_knowledge(col_name, query, n_results)
-            for doc in docs:
-                # 极度安全保险：严格对检索回来的每个 RAG 知识块做字符截断（最多 500 字符），防止上传未正确切分的整本书导致大模型 Logits Tensor 爆炸发生 OOM
-                safe_doc = doc[:500]
-                doc_hash = hashlib.md5(safe_doc.encode()).hexdigest()
-                if doc_hash not in seen_hashes:
-                    seen_hashes.add(doc_hash)
-                    all_results.append({"document": safe_doc, "kb_id": kb_id, "kb_name": kb_name_map.get(kb_id, "")})
-        except Exception as e:
-            print(f"KB query failed [{kb_id}/{col_name}]: {e}")
-
-    return all_results[:n_results]
-
-
 def resolve_rag_kb_ids(req_kb_ids: Optional[List[str]], req_group_id: Optional[str], agent_name: str) -> List[str]:
     from services.knowledge_manager import kb_manager
     if req_kb_ids: return req_kb_ids

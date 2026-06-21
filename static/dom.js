@@ -11,7 +11,7 @@ export const Elements = {};
 export function cacheElements() {
     const ids = [
         'configStatus', 'apiStatusBadge',
-        'translationOutput', 'epubOutput', 'replaceOutput',
+        'translationOutput', 'replaceOutput',
         'tmCount', 'tmList', 'kbManagerContent',
         'kbHistCount', 'kbEpubCount',
         'bgeStatus', 'bgeStatusText', 'bgeStatusSpinner',
@@ -19,6 +19,9 @@ export function cacheElements() {
         'apiConfigGrid', 'apiConfigToggleBtn', 'configSummaryText',
         'themeToggle',
         'pipelineOutput', 'pipelineProgressBar', 'pipelineProgressText',
+        // 记忆库面板
+        'memoryTermTableBody', 'memorySearchInput', 'memoryImportFile',
+        'memoryProjectName', 'memoryPathText',
     ];
     for (const id of ids) {
         Elements[id] = document.getElementById(id);

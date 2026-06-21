@@ -14,6 +14,8 @@ function getInputs() {
         llmProvider:      $('llmProvider'),
         localTranslate:   $('localTranslateModel'),
         localEpub:        $('localEpubModel'),
+        downloadSource:   $('downloadSource'),
+        msCacheDir:       $('modelscopeCacheDir'),
     };
 }
 
@@ -81,8 +83,10 @@ export async function saveConfig() {
             embedding_provider: inputs.embedProvider.value,
             bge_model_id: DEFAULTS.bgeModel,
             llm_provider: llmProvider,
-            local_translate_model: inputs.localTranslate.value.trim() || 'Qwen/Qwen2.5-1.5B-Instruct',
+            local_translate_model: inputs.localTranslate.value.trim() || 'Qwen/Qwen2-7B-Instruct',
             local_epub_model: inputs.localEpub.value.trim(),
+            download_source: inputs.downloadSource.value,
+            modelscope_cache_dir: inputs.msCacheDir.value.trim(),
         });
         if (result.success) {
             setConfigStatus('✅ ' + result.message, 'success');
@@ -103,6 +107,8 @@ export async function saveConfig() {
             localStorage.setItem(LS_KEY.llmProvider, llmProvider);
             localStorage.setItem(LS_KEY.localTranslate, inputs.localTranslate.value.trim());
             localStorage.setItem(LS_KEY.localEpub, inputs.localEpub.value.trim());
+            localStorage.setItem(LS_KEY.downloadSource, inputs.downloadSource.value);
+            localStorage.setItem(LS_KEY.msCacheDir, inputs.msCacheDir.value.trim());
             if (llmProvider === 'local') {
                 checkLlmStatus();
             }
@@ -126,16 +132,20 @@ export function clearConfig() {
     inputs.llmProvider.value = 'openai';
     setConfigStatus('已清除', 'muted');
     setBadge('pending', '⏳ 未配置');
-    [LS_KEY.baseUrl, LS_KEY.model, LS_KEY.embedding, LS_KEY.provider, LS_KEY.llmProvider].forEach(k => localStorage.removeItem(k));
+    [LS_KEY.baseUrl, LS_KEY.model, LS_KEY.embedding, LS_KEY.provider, LS_KEY.llmProvider, LS_KEY.downloadSource, LS_KEY.msCacheDir].forEach(k => localStorage.removeItem(k));
     // 重置本地模型字段
-    inputs.localTranslate.value = 'Qwen/Qwen2.5-1.5B-Instruct';
+    inputs.localTranslate.value = 'Qwen/Qwen2-7B-Instruct';
     inputs.localEpub.value = '';
+    inputs.downloadSource.value = 'huggingface';
+    inputs.msCacheDir.value = '';
+    onDownloadSourceChange();
     onEmbeddingProviderChange();
     onLlmProviderChange();
     apiClearConfig({
         api_key: '', base_url: DEFAULTS.baseUrl, model_name: DEFAULTS.model,
         embedding_model: DEFAULTS.embedding, embedding_provider: 'openai', bge_model_id: DEFAULTS.bgeModel,
-        llm_provider: 'openai', local_translate_model: '', local_epub_model: ''
+        llm_provider: 'openai', local_translate_model: '', local_epub_model: '',
+        download_source: 'huggingface', modelscope_cache_dir: ''
     });
 }
 
@@ -180,6 +190,12 @@ export async function loadConfig() {
         if (localTrans) inputs.localTranslate.value = localTrans;
         if (localEpub !== undefined && localEpub !== null) inputs.localEpub.value = localEpub;
 
+        const dlSource = localStorage.getItem(LS_KEY.downloadSource) || data.download_source || 'huggingface';
+        inputs.downloadSource.value = dlSource;
+        const msCache = localStorage.getItem(LS_KEY.msCacheDir) || data.modelscope_cache_dir || '';
+        inputs.msCacheDir.value = msCache;
+
+        onDownloadSourceChange();
         onEmbeddingProviderChange();
         onLlmProviderChange();
     } catch (e) { console.error('加载配置失败', e); }
@@ -247,6 +263,12 @@ async function checkLlmStatus() {
             }
         }
     } catch (e) { console.error('检查LLM状态失败', e); }
+}
+
+export function onDownloadSourceChange() {
+    const dlSource = (getInputs().downloadSource || {}).value || 'huggingface';
+    const msGroup = $('msCacheGroup');
+    if (msGroup) msGroup.style.display = dlSource === 'modelscope' ? 'block' : 'none';
 }
 
 export function onEmbeddingProviderChange() {

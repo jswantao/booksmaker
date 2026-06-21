@@ -6,6 +6,7 @@ from api.epub import router as epub_router
 from api.tm import router as tm_router
 from api.knowledge import router as knowledge_router
 from api.pipeline import router as pipeline_router
+from api.terminology import router as terminology_router
 
 api_router = APIRouter()
 api_router.include_router(config_router)
@@ -14,3 +15,4 @@ api_router.include_router(epub_router)
 api_router.include_router(tm_router)
 api_router.include_router(knowledge_router)
 api_router.include_router(pipeline_router)
+api_router.include_router(terminology_router)

@@ -5,8 +5,7 @@
 export const API_PATH = {
     config:       '/api/config',
     translate:    '/api/translate',
-    generateEpub: '/api/generate_epub',
-    replaceEpub:  '/api/replace_epub',
+    epubReplace:  '/api/epub/replace',
     tmList:       '/api/tm',
     tmSearch:     '/api/tm/search',
     tmClear:      '/api/tm/clear',
@@ -30,6 +29,8 @@ export const API_PATH = {
     pipelineMemoryInit: '/api/pipeline/memory/init',
     pipelineStitch: '/api/pipeline/stitch',
     pipelineKbs: '/api/pipeline/kbs',
+    // Terminology
+    terminology: '/api/terminology',
 };
 
 // ---- 默认值 ----
@@ -49,6 +50,8 @@ export const LS_KEY = {
     llmProvider:'llm_provider',
     localTranslate: 'local_translate_model',
     localEpub:  'local_epub_model',
+    downloadSource: 'download_source',
+    msCacheDir: 'modelscope_cache_dir',
     darkMode:   'darkMode',
 };
 
@@ -64,9 +67,7 @@ export const CSS_CLASS = {
     emptyStateSm: 'empty-state-sm',
 };
 
-// ---- 示例文本 ----
-export const EXAMPLE_TRANSLATION = '';  // 占位，由 HTML 预填充
-export const EXAMPLE_EPUB = '';         // 占位，由 HTML 预填充
+// ---- 轮询配置 ----
 export const POLL_CONFIG = {
     MIN_INTERVAL: 10000,
     MAX_INTERVAL: 30000,

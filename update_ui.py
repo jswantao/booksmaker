@@ -836,7 +836,7 @@ new_api_config = """<div class="api-config" id="apiConfig">
                 <span id="apiStatusBadge" class="api-status pending">⏳ 未配置</span>
                 <span id="configSummaryText" class="config-summary-text">⚡ 当前驱动：未配置</span>
             </div>
-            <button type="button" class="btn btn-secondary btn-sm" id="apiConfigToggleBtn" onclick="event.stopPropagation()">收起面板 ⬆️</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="apiConfigToggleBtn">收起面板 ⬆️</button>
         </div>
         <div class="config-grid" id="apiConfigGrid">
             <div class="full-width">
@@ -851,7 +851,7 @@ new_api_config = """<div class="api-config" id="apiConfig">
                 <label>LLM 提供者</label>
                 <select id="llmProvider" data-change="llm-provider" class="config-select">
                     <option value="openai">OpenAI API</option>
-                    <option value="local">本地模型 (Qwen2.5-1.5B)</option>
+                    <option value="local">本地模型 (Qwen/Hunyuan)</option>
                 </select>
             </div>
             <div id="openaiModelGroup">
@@ -860,7 +860,7 @@ new_api_config = """<div class="api-config" id="apiConfig">
             </div>
             <div id="localModelConfig" style="display:none;">
                 <label>本地翻译模型</label>
-                <input type="text" id="localTranslateModel" placeholder="Qwen/Qwen2.5-1.5B-Instruct" value="Qwen/Qwen2.5-1.5B-Instruct">
+                <input type="text" id="localTranslateModel" placeholder="Qwen/Qwen2-7B-Instruct" value="Qwen/Qwen2-7B-Instruct">
                 <label style="margin-top:10px;">本地 EPUB 模型（留空则复用翻译模型）</label>
                 <input type="text" id="localEpubModel" placeholder="留空 = 复用翻译模型">
             </div>

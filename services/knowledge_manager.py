@@ -185,10 +185,6 @@ class KnowledgeBaseManager:
         if not rows: rows = self._execute("SELECT kb_id FROM agent_kb_assignments WHERE agent_name=?", (agent_name,))
         return [r[0] for r in rows]
 
-    def get_agent_default_collections(self, agent_name: str) -> List[str]:
-        kb_ids = self.get_agent_default_kb_ids(agent_name)
-        return [kb["collection_name"] for kb in self.get_kbs_by_ids(kb_ids)]
-
 
 # 单例
 kb_manager = KnowledgeBaseManager(config.KB_DB_PATH, chroma_client=None)

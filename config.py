@@ -3,7 +3,6 @@
 
 import os
 
-# 关闭 ChromaDB 烦人的匿名遥测报错日志
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
 class Config:
@@ -23,10 +22,13 @@ user_api_config = {
     "bge_model_id": os.environ.get("BGE_MODEL_ID", "BAAI/bge-base-zh-v1.5"),
     # LLM 提供者配置
     "llm_provider": os.environ.get("LLM_PROVIDER", "openai"),  # "openai" | "local"
-    "local_translate_model": os.environ.get("LOCAL_TRANSLATE_MODEL", "Qwen/Qwen2-7B-Instruct-GPTQ-Int4"),
+    "local_translate_model": os.environ.get("LOCAL_TRANSLATE_MODEL", "Qwen/Qwen2-7B-Instruct"),
     "local_epub_model": os.environ.get("LOCAL_EPUB_MODEL", ""),  # 空 = 复用翻译模型
     "local_load_in_4bit": os.environ.get("LOCAL_LOAD_IN_4BIT", "true").lower() == "true",
     "local_load_in_8bit": os.environ.get("LOCAL_LOAD_IN_8BIT", "false").lower() == "true",
+    # 模型下载源: "huggingface" (默认) | "modelscope" (魔搭社区，国内加速)
+    "download_source": os.environ.get("DOWNLOAD_SOURCE", "huggingface"),
+    "modelscope_cache_dir": os.environ.get("MODELSCOPE_CACHE_DIR", ""),
 }
 
 # ---- ebooklib 可用性 ----

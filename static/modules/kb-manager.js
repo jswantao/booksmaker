@@ -3,9 +3,10 @@ import { Elements, $ } from '../dom.js';
 import { API_PATH, CSS_CLASS } from '../config.js';
 import {
     fetchKbList, createKb, updateKb, deleteKbEntry, uploadToKbApi,
-    createGroup, updateGroup, deleteGroupEntry, uploadKnowledge
+    createGroup, updateGroup, deleteGroupEntry, uploadKnowledge,
+    listTerms, addTerm, deleteTerm
 } from '../api.js';
-import { renderKBList, renderKbSelectorTags, populateGroupSelects, showModal, hideModal, switchMainTab } from '../ui.js';
+import { renderKBList, renderKbSelectorTags, populateGroupSelects, showModal, hideModal } from '../ui.js';
 import { escapeHtml } from '../utils.js';
 import { AppState } from '../state.js';
 
@@ -230,9 +231,42 @@ async function uploadOldKnowledge(agentName) {
 }
 
 // ---- 导出 click 处理器映射 ----
+// ---- 术语管理函数 ----
+async function refreshTermList(search) {
+    try {
+        const result = await listTerms(search || '');
+        const el = document.getElementById('termList');
+        const countEl = document.getElementById('termCount');
+        if (!el) return;
+        if (!result.success) { el.innerHTML = '<div class="empty-state-sm">加载失败</div>'; return; }
+        const entries = Object.entries(result.terms || {});
+        if (countEl) countEl.textContent = entries.length + ' 条';
+        if (entries.length === 0) { el.innerHTML = '<div class="empty-state-sm">暂无术语，在上方添加</div>'; return; }
+        const query = (document.getElementById('termSearchInput')?.value || '').toLowerCase();
+        const filtered = query ? entries.filter(([en, zh]) => en.toLowerCase().includes(query) || zh.includes(query)) : entries;
+        el.innerHTML = filtered.slice(0, 30).map(([en, zh]) =>
+            `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid var(--border);">
+              <span><b>${escapeHtml(en)}</b> → ${escapeHtml(zh)}</span>
+              <button class="delete-btn" data-action="delete-term" data-param="${escapeHtml(en)}" data-term="${encodeURIComponent(en)}" style="font-size:0.8rem;padding:2px 8px;">x</button>
+            </div>`).join('');
+    } catch (e) { console.error(e); }
+}
+
+async function addTermHandler() {
+    const en = (document.getElementById('termEnInput')?.value || '').trim();
+    const zh = (document.getElementById('termZhInput')?.value || '').trim();
+    if (!en || !zh) return;
+    try { const r = await addTerm(en, zh); if (r.success) { document.getElementById('termEnInput').value = ''; document.getElementById('termZhInput').value = ''; refreshTermList(); } } catch (e) { console.error(e); }
+}
+
+async function searchTermHandler() { refreshTermList(document.getElementById('termSearchInput')?.value || ''); }
+
+async function deleteTermHandler(en) {
+    try { const r = await deleteTerm(en); if (r.success) refreshTermList(); } catch (e) { console.error(e); }
+}
+
 export function getClickHandlers() {
     return {
-        'switch-main-tab':       (el) => { const tab = el.dataset.param; switchMainTab(tab); if (tab === 'kbmanager') refreshKBManager(); },
         'show-kb-modal':         () => showKbModal(),
         'show-group-modal':      () => showGroupModal(),
         'refresh-kb-manager':    () => refreshKBManager(),
@@ -252,6 +286,9 @@ export function getClickHandlers() {
         'toggle-kb-group':       (el) => el.classList.toggle(CSS_CLASS.collapsed),
         'edit-kb':               (el) => { const p = el.dataset.param.split('|'); showKbModal(p[0], p[1], p[2], p[3], p[4]); },
         'edit-group':            (el) => { const p = el.dataset.param.split('|'); showGroupModal(p[0], p[1], p[2]); },
+        'add-term':              () => addTermHandler(),
+        'search-term':           () => searchTermHandler(),
+        'delete-term':           (el) => deleteTermHandler(decodeURIComponent(el.dataset.term)),
         'none':                  () => {},
     };
 }
@@ -262,5 +299,9 @@ export function getChangeHandlers() {
         'group-select':       (el) => onGroupSelect(el.dataset.param),
     };
 }
+
+// Auto-load term list on init
+document.addEventListener('DOMContentLoaded', () => { setTimeout(refreshTermList, 500); });
+
 
 export { refreshKBManager };

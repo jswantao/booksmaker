@@ -10,8 +10,10 @@ class ApiConfigRequest(BaseModel):
     embedding_provider: str = "openai"
     bge_model_id: str = "BAAI/bge-base-zh-v1.5"
     llm_provider: str = "openai"
-    local_translate_model: str = "Qwen/Qwen2.5-1.5B-Instruct"
+    local_translate_model: str = "Qwen/Qwen2-7B-Instruct"
     local_epub_model: str = ""
+    download_source: str = "huggingface"  # "huggingface" | "modelscope"
+    modelscope_cache_dir: str = ""
 
 class EmbeddingSwitchRequest(BaseModel):
     provider: str
@@ -25,6 +27,7 @@ class TranslateRequest(BaseModel):
     kb_ids: List[str] = []
     group_id: Optional[str] = None
     context: Optional[str] = None
+    book_name: Optional[str] = None  # 当前翻译的著作名，用于关联 JSON 记忆库
 
 class EpubRequest(BaseModel):
     content: str

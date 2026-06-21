@@ -199,3 +199,92 @@ def hybrid_query_multiple(kb_ids: List[str], query: str, **searcher_kwargs) -> L
 
     all_results.sort(key=lambda x: x['score'], reverse=True)
     return all_results[:searcher.top_k]
+
+
+# ---- 分组加权混合检索 ----
+class GroupedHybridSearcher:
+    """按分组精准调用知识库，每组独立权重/top_k/阈值。
+
+    用法示例：
+        groups = {
+            "terminology": {"kb_ids": [...], "weight": 1.2, "top_k": 3, "threshold": 0.5},
+            "background":  {"kb_ids": [...], "weight": 0.8, "top_k": 2, "threshold": 0.3},
+        }
+        searcher = GroupedHybridSearcher(groups)
+        results = searcher.search(query)            # 搜全部分组
+        results = searcher.search(query, "terminology")  # 只搜术语组
+    """
+
+    def __init__(self, kb_groups: Dict[str, Dict]):
+        self.groups = kb_groups
+
+    def _search_group(self, query: str, group_cfg: Dict) -> List[Dict]:
+        """搜索单个分组"""
+        from services.knowledge_manager import kb_manager
+
+        kb_ids = group_cfg.get("kb_ids", [])
+        top_k = group_cfg.get("top_k", 2)
+        threshold = group_cfg.get("threshold", 0.3)
+        sem_w = group_cfg.get("semantic_weight", 0.7)
+        kw_w = group_cfg.get("keyword_weight", 0.3)
+
+        if not kb_ids:
+            return []
+
+        return hybrid_query_multiple(
+            kb_ids, query,
+            top_k=top_k,
+            score_threshold=threshold,
+            semantic_weight=sem_w,
+            keyword_weight=kw_w,
+        )
+
+    def search(self, query: str, group_name: str = None) -> List[Dict]:
+        """搜索知识库
+
+        Args:
+            query: 查询文本
+            group_name: 指定分组名称。None 时搜索所有分组并加权合并。
+
+        Returns:
+            去重排序后的结果列表
+        """
+        if group_name:
+            group = self.groups.get(group_name)
+            if not group:
+                return []
+            results = self._search_group(query, group)
+            for r in results:
+                r["group"] = group_name
+            return results
+
+        # 搜索所有分组，加权合并
+        all_results = []
+        seen = set()
+
+        for name, group_cfg in self.groups.items():
+            weight = group_cfg.get("weight", 1.0)
+            results = self._search_group(query, group_cfg)
+
+            for r in results:
+                h = hashlib.md5(r.get('document', '').encode()).hexdigest()
+                if h not in seen:
+                    seen.add(h)
+                    r["group"] = name
+                    r["score"] *= weight  # 分组加权
+                    all_results.append(r)
+
+        all_results.sort(key=lambda x: x["score"], reverse=True)
+        return self._deduplicate(all_results)[:5]
+
+    @staticmethod
+    def _deduplicate(results: List[Dict]) -> List[Dict]:
+        """按文档内容去重，保留分数最高的"""
+        seen = set()
+        unique = []
+        for r in results:
+            h = hashlib.md5(r.get('document', '').encode()).hexdigest()
+            if h not in seen:
+                seen.add(h)
+                unique.append(r)
+        return unique

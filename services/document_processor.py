@@ -39,34 +39,58 @@ class DocumentProcessor:
         # 回退：整篇作为一个章节
         return [{"title": "全文", "content": text}]
 
-    # ---- 重叠分块 ----
+    # ---- 重叠分块（语义边界感知） ----
     def chunk_text(self, text: str) -> List[Dict]:
-        """按字符数切分为重叠分块。每块约 chunk_size 字符，前后 overlap 字符重叠"""
+        """按字符数切分为重叠分块，在句子边界处断开。
+
+        改进：
+        - 在 chunk_size 的 60%-110% 范围内查找最近的句子边界
+        - 重叠部分携带前一 chunk 的最后1-2句作为上下文
+        """
         chunks = []
         start = 0
         idx = 0
+        prev_tail = ""  # 前一 chunk 的尾部句子（上下文重叠）
+
         while start < len(text):
             end = min(start + self.chunk_size, len(text))
             chunk_content = text[start:end]
 
-            # 尽量在句号/段落边界处截断
+            # 在 60%-110% 范围内查找最近的句子/段落边界
             if end < len(text):
-                # 向后找最近的句子边界
-                boundary = max(
-                    chunk_content.rfind('。'),
-                    chunk_content.rfind('. '),
-                    chunk_content.rfind('\n'),
-                )
-                if boundary > self.chunk_size * 0.6:
-                    end = start + boundary + 1
+                best_boundary = -1
+                search_start = int(self.chunk_size * 0.6)
+                search_end = min(int(self.chunk_size * 1.1), len(chunk_content))
+
+                # 查找范围内的所有边界位置
+                for sep in ['。\n', '。\n\n', '.\n', '。\n', '\n\n', '。', '. ']:
+                    pos = chunk_content.rfind(sep, search_start, search_end)
+                    if pos > best_boundary:
+                        best_boundary = pos + len(sep) - 1
+
+                if best_boundary > search_start:
+                    end = start + best_boundary + 1
                     chunk_content = text[start:end]
+
+            # 添加前一 chunk 的尾部作为上下文前缀
+            content = chunk_content.strip()
+            if prev_tail and idx > 0:
+                content = f"[前文] {prev_tail}\n\n{content}"
 
             chunks.append({
                 "index": idx,
-                "content": chunk_content.strip(),
+                "content": content,
                 "char_start": start,
                 "char_end": end,
             })
+
+            # 保存当前 chunk 的最后1-2句作为下一 chunk 的上下文
+            sentences = re.split(r'[。.!?\n]+', chunk_content)
+            sentences = [s.strip() for s in sentences if s.strip()]
+            prev_tail = "。".join(sentences[-2:]) if len(sentences) >= 2 else (sentences[-1] if sentences else "")
+            if len(prev_tail) > 200:
+                prev_tail = prev_tail[-200:]
+
             start = end - self.overlap
             idx += 1
         return chunks
@@ -111,7 +135,7 @@ class DocumentProcessor:
 
 # ---- 文件读取 ----
 def read_document(file_path: str) -> str:
-    """读取 TXT 或 PDF 文件，返回文本内容"""
+    """读取 TXT/PDF/EPUB 文件，返回文本内容"""
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError(f"文件不存在: {file_path}")
@@ -119,10 +143,11 @@ def read_document(file_path: str) -> str:
     suffix = path.suffix.lower()
     if suffix == '.pdf':
         return _read_pdf(file_path)
+    elif suffix == '.epub':
+        return _read_epub(file_path)
     elif suffix in ('.txt', '.md', '.text'):
         return _read_text(file_path)
     else:
-        # 默认按文本文件读取
         return _read_text(file_path)
 
 
@@ -150,43 +175,38 @@ def _read_pdf(file_path: str) -> str:
     return "\n\n".join(pages)
 
 
-# ---- 知识库构建入口 ----
-def build_knowledge_base(file_path: str, kb_name: str, chunk_size: int = 1200,
-                         overlap: int = 150):
-    """离线构建知识库：读取文件 → 切分 → 嵌入 → 存入 ChromaDB。支持 TXT 和 PDF。"""
-    from services.knowledge_manager import kb_manager
-    from services.knowledge_service import add_to_knowledge
+def _read_epub(file_path: str) -> str:
+    """读取 EPUB 文件，提取所有章节纯文本"""
+    try:
+        from ebooklib import epub
+    except ImportError:
+        raise ImportError("读取 EPUB 需要 ebooklib 库。请运行: pip install ebooklib")
 
-    print(f"[KB Builder] Processing: {file_path}")
-    text = read_document(file_path)
-    print(f"[KB Builder] Read {len(text)} characters")
+    from bs4 import BeautifulSoup
 
-    processor = DocumentProcessor(chunk_size=chunk_size, overlap=overlap)
-    chapters = processor.split_chapters(text)
-    print(f"[KB Builder] Found {len(chapters)} chapters")
+    book = epub.read_epub(file_path)
+    chapters = []
 
-    # 创建或获取 KB
-    existing = kb_manager.get_all_kbs()
-    target = next((k for k in existing if k['name'] == kb_name), None)
-    if not target:
-        target = kb_manager.create_kb(name=kb_name, description=f"Auto-built from {Path(file_path).name}",
-                                      embedding_model="bge")
-        print(f"[KB Builder] Created KB: {target['name']}")
+    for item in book.get_items():
+        if item.get_type() == 9:  # ITEM_DOCUMENT = 9 (XHTML)
+            try:
+                content = item.get_content().decode('utf-8')
+                soup = BeautifulSoup(content, 'html.parser')
+                text = soup.get_text(separator='\n', strip=True)
+                if text.strip():
+                    chapters.append(text)
+            except Exception as e:
+                print(f"[EPUB] Skip item {item.get_name()}: {e}")
 
-    # 按章节逐段添加
-    total_chunks = 0
-    for ch in chapters:
-        chunks = processor.chunk_text(ch['content'])
-        if not chunks:
-            continue
-        texts = [f"[{ch['title']}] {c['content']}" for c in chunks]
-        add_to_knowledge(target['collection_name'], texts, [
-            {"source": str(Path(file_path).name), "chapter": ch['title'], "chunk": str(c['index'])}
-            for c in chunks
-        ])
-        total_chunks += len(chunks)
-        print(f"  Chapter '{ch['title'][:30]}': {len(chunks)} chunks added")
+    if not chapters:
+        for item in book.get_items():
+            try:
+                content = item.get_content().decode('utf-8')
+                soup = BeautifulSoup(content, 'html.parser')
+                text = soup.get_text(separator='\n', strip=True)
+                if len(text) > 100:
+                    chapters.append(text)
+            except Exception:
+                pass
 
-    kb_manager.update_document_count(target['id'])
-    print(f"[KB Builder] Done: {total_chunks} chunks in KB '{kb_name}'")
-    return target
+    return "\n\n".join(chapters)
