@@ -1,192 +1,181 @@
-# services/hybrid_search.py — 混合检索（向量 + 全文 + 重排序）
-"""参考 Dify 知识库方案：同时执行语义检索和关键词检索，加权重排序"""
+# services/hybrid_search.py — Hybrid index model (Dify-style)
+# keyword + semantic + rerank, scoped to group/chapter only
 
 import hashlib
 import re
 from typing import List, Dict, Optional
+
 from embedding_providers import EmbeddingManager
 from core.database import chroma_client
 from config import user_api_config
 
-
 class HybridSearcher:
-    """混合检索器：向量语义 + 全文关键词，加权重排序"""
+    """Dify-style hybrid: vector + BM25-like keyword + rerank, scoped"""
 
-    _defaults = {
-        "top_k": 3,
-        "score_threshold": 0.3,
-        "semantic_weight": 0.7,
-        "keyword_weight": 0.3,
-    }
-
-    def __init__(self, top_k: int = None, score_threshold: float = None,
-                 semantic_weight: float = None, keyword_weight: float = None):
-        self.top_k = top_k or self._defaults["top_k"]
-        self.score_threshold = score_threshold or self._defaults["score_threshold"]
-        self.semantic_weight = semantic_weight if semantic_weight is not None else self._defaults["semantic_weight"]
-        self.keyword_weight = keyword_weight if keyword_weight is not None else self._defaults["keyword_weight"]
-
-        # 归一化权重
-        total = self.semantic_weight + self.keyword_weight
+    def __init__(self, top_k: int = 3, score_threshold: float = 0.35,
+                 semantic_weight: float = 0.6, keyword_weight: float = 0.4):
+        self.top_k = top_k
+        self.score_threshold = score_threshold
+        self.semantic_weight = semantic_weight
+        self.keyword_weight = keyword_weight
+        # normalize
+        total = semantic_weight + keyword_weight
         if total > 0:
             self.semantic_weight /= total
             self.keyword_weight /= total
 
-    # ---- 全文检索 ----
     @staticmethod
     def _tokenize(text: str) -> List[str]:
-        """中文/英文分词（简易版，生产环境可替换为 jieba）"""
-        # 中文字符单字切分 + 英文单词
         tokens = []
-        # 匹配中文连续块或英文单词
-        for match in re.finditer(r'[一-鿿]+|[a-zA-Z]+|\d+', text.lower()):
-            word = match.group()
-            if re.match(r'[一-鿿]+', word):
-                # 中文：2-gram 分词
-                if len(word) <= 2:
-                    tokens.append(word)
+        for m in re.finditer(r'[一-鿿]+|[a-zA-Z]+|\d+', text.lower()):
+            w = m.group()
+            if re.match(r'[一-鿿]+', w):
+                if len(w) <= 2:
+                    tokens.append(w)
                 else:
-                    for i in range(len(word) - 1):
-                        tokens.append(word[i:i + 2])
+                    for i in range(len(w)-1):
+                        tokens.append(w[i:i+2])
             else:
-                tokens.append(word)
+                tokens.append(w)
         return tokens
 
     @staticmethod
-    def _keyword_score(query_tokens: List[str], doc: str) -> float:
-        """计算关键词匹配分数（TF-IDF 简化版）"""
-        if not query_tokens or not doc:
-            return 0.0
-        doc_lower = doc.lower()
-        # 计算命中数
-        hits = sum(1 for t in query_tokens if t in doc_lower)
-        if hits == 0:
-            return 0.0
-        # TF 因子：命中 tokens 在文档中出现的频率
-        tf = hits / max(len(query_tokens), 1)
-        # 位置奖励：越靠前权重越高
-        positions = [doc_lower.find(t) for t in query_tokens if t in doc_lower]
-        pos_bonus = 1.0 - (min(positions) / max(len(doc_lower), 1)) if positions else 0
-        return min(tf * (0.7 + 0.3 * pos_bonus), 1.0)
+    def _bm25_score(query_tokens: List[str], doc: str) -> float:
+        if not query_tokens or not doc: return 0.0
+        dl = doc.lower()
+        hits = sum(1 for t in query_tokens if t in dl)
+        if hits == 0: return 0.0
+        tf = hits / len(query_tokens)
+        # position boost
+        positions = [dl.find(t) for t in query_tokens if t in dl]
+        pos_bonus = 1.0 - (min(positions) / max(len(dl),1)) if positions else 0
+        return min(tf * (0.65 + 0.35*pos_bonus), 1.0)
 
-    def keyword_search(self, collection_name: str, query: str, n_results: int = 10) -> List[Dict]:
-        """全文关键词检索"""
-        try:
-            collection = chroma_client.get_collection(collection_name)
-            all_docs = collection.get(limit=1000)
-        except Exception:
-            return []
-
-        if not all_docs.get('documents'):
-            return []
-
-        query_tokens = self._tokenize(query)
-        results = []
-        for i, doc in enumerate(all_docs['documents']):
-            score = self._keyword_score(query_tokens, doc)
-            if score > 0:
-                results.append({"document": doc, "score": round(score, 4), "method": "keyword",
-                                "metadata": all_docs.get('metadatas', [{}])[i] if i < len(
-                                    all_docs.get('metadatas', [])) else {}})
-        results.sort(key=lambda x: x['score'], reverse=True)
-        return results[:n_results]
-
-    def vector_search(self, collection_name: str, query: str, n_results: int = 10) -> List[Dict]:
-        """向量语义检索"""
+    def _vector_search_scoped(self, collection_name: str, query: str, n_results: int,
+                              where_filter: Optional[Dict] = None) -> List[Dict]:
         if user_api_config.get("embedding_provider") != "bge" and not user_api_config.get("api_key"):
             return []
         try:
-            collection = chroma_client.get_collection(collection_name)
+            col = chroma_client.get_collection(collection_name)
             q_emb = EmbeddingManager().embed([query], is_query=True)[0]
-            resp = collection.query(query_embeddings=[q_emb], n_results=n_results)
+            kwargs = {"query_embeddings": [q_emb], "n_results": n_results}
+            if where_filter:
+                kwargs["where"] = where_filter
+            resp = col.query(**kwargs)
         except Exception:
             return []
-
         if not resp.get('ids') or not resp['ids'][0]:
             return []
-
-        results = []
+        out = []
         for i in range(len(resp['ids'][0])):
             dist = resp['distances'][0][i] if resp.get('distances') else 0
             sim = 1.0 - min(dist, 1.0)
             if sim >= self.score_threshold:
-                results.append({"document": resp['documents'][0][i], "score": round(sim, 4),
-                                "method": "vector",
-                                "metadata": resp.get('metadatas', [[]])[0][i] if i < len(
-                                    resp.get('metadatas', [[]])[0]) else {}})
-        return results
+                meta = resp.get('metadatas', [[]])[0][i] if resp.get('metadatas') else {}
+                out.append({
+                    "document": resp['documents'][0][i],
+                    "score": round(sim,4),
+                    "method": "vector",
+                    "metadata": meta
+                })
+        return out
 
-    def search(self, collection_name: str, query: str) -> List[Dict]:
-        """混合检索：融合向量和关键词结果，加权重排序
+    def _keyword_search_scoped(self, collection_name: str, query: str, n_results: int,
+                               where_filter: Optional[Dict] = None) -> List[Dict]:
+        try:
+            col = chroma_client.get_collection(collection_name)
+            # Chroma where filter for keyword prefetch
+            if where_filter:
+                all_docs = col.get(where=where_filter, limit=2000)
+            else:
+                all_docs = col.get(limit=1500)
+        except Exception:
+            return []
+        if not all_docs.get('documents'): return []
+        qt = self._tokenize(query)
+        res = []
+        docs = all_docs['documents']
+        metas = all_docs.get('metadatas', [{}]*len(docs))
+        for i, doc in enumerate(docs):
+            sc = self._bm25_score(qt, doc)
+            if sc > 0:
+                res.append({"document": doc, "score": round(sc,4), "method": "keyword", "metadata": metas[i] if i < len(metas) else {}})
+        res.sort(key=lambda x: x['score'], reverse=True)
+        return res[:n_results]
 
-        Args:
-            collection_name: ChromaDB 集合名
-            query: 搜索查询文本
-
-        Returns:
-            [{"document": str, "score": float, "method": str}, ...] 按最终分数降序
+    def search(self, collection_name: str, query: str,
+               group: Optional[str] = None,
+               chapter: Optional[str] = None) -> List[Dict]:
         """
-        # 1. 同时执行两种检索
-        vector_results = []
-        keyword_results = []
+        Dify hybrid: scoped to group/chapter ONLY, not entire KB.
+        where_filter ensures retrieval must use only the relevant group/chapter content.
+        """
+        where_filter = None
+        if group or chapter:
+            where_filter = {}
+            if group: where_filter["group"] = group
+            if chapter: where_filter["chapter"] = chapter
 
-        # 语义权重 > 0 时执行向量检索
-        if self.semantic_weight > 0:
-            vector_results = self.vector_search(collection_name, query, self.top_k * 3)
+        vector_results = self._vector_search_scoped(collection_name, query, self.top_k*3, where_filter) if self.semantic_weight>0 else []
+        keyword_results = self._keyword_search_scoped(collection_name, query, self.top_k*3, where_filter) if self.keyword_weight>0 else []
 
-        # 关键词权重 > 0 时执行全文检索
-        if self.keyword_weight > 0:
-            keyword_results = self.keyword_search(collection_name, query, self.top_k * 3)
-
-        # 2. 合并并加权重排序
-        merged: Dict[str, Dict] = {}  # doc_hash → result
-
+        merged: Dict[str, Dict] = {}
         for r in vector_results:
             h = hashlib.md5(r['document'].encode()).hexdigest()
-            merged[h] = {"document": r['document'], "score": r['score'] * self.semantic_weight,
-                         "scores": {"vector": r['score'], "keyword": 0.0},
-                         "methods": ["vector"], "metadata": r.get('metadata', {})}
-
+            merged[h] = {
+                "document": r['document'],
+                "score": r['score'] * self.semantic_weight,
+                "scores": {"vector": r['score'], "keyword": 0.0},
+                "methods": ["vector"],
+                "metadata": r.get("metadata", {})
+            }
         for r in keyword_results:
             h = hashlib.md5(r['document'].encode()).hexdigest()
-            kw_score = r['score'] * self.keyword_weight
+            kw = r['score'] * self.keyword_weight
             if h in merged:
-                merged[h]['score'] += kw_score
-                merged[h]['scores']['keyword'] = r['score']
-                merged[h]['methods'].append('keyword')
+                merged[h]["score"] += kw
+                merged[h]["scores"]["keyword"] = r['score']
+                merged[h]["methods"].append("keyword")
             else:
-                merged[h] = {"document": r['document'], "score": kw_score,
-                             "scores": {"vector": 0.0, "keyword": r['score']},
-                             "methods": ["keyword"], "metadata": r.get('metadata', {})}
+                merged[h] = {
+                    "document": r['document'],
+                    "score": kw,
+                    "scores": {"vector": 0.0, "keyword": r['score']},
+                    "methods": ["keyword"],
+                    "metadata": r.get("metadata", {})
+                }
+        results = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
+        results = [r for r in results if r["score"] >= self.score_threshold]
 
-        # 3. 按最终分数排序 + 阈值过滤
-        results = sorted(merged.values(), key=lambda x: x['score'], reverse=True)
-        results = [r for r in results if r['score'] >= self.score_threshold]
+        # rerank: simple cross-encoder-free rerank = boost dual-hit
+        for r in results:
+            if "vector" in r["methods"] and "keyword" in r["methods"]:
+                r["score"] *= 1.15
 
-        # 只返回简洁结果
-        return [{"document": r['document'], "score": r['score'], "method": "+".join(r['methods']),
-                 "detail": r.get('scores', {})} for r in results[:self.top_k]]
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return [{
+            "document": r["document"],
+            "score": round(r["score"],4),
+            "method": "+".join(r["methods"]),
+            "metadata": r.get("metadata",{}),
+            "detail": r.get("scores",{})
+        } for r in results[:self.top_k]]
 
 
-# ---- 多知识库混合检索 ----
-def hybrid_query_multiple(kb_ids: List[str], query: str, **searcher_kwargs) -> List[Dict]:
-    """跨多个 KB 的混合检索"""
+def hybrid_query_multiple(kb_ids: List[str], query: str,
+                          group: Optional[str] = None,
+                          chapter: Optional[str] = None,
+                          **searcher_kwargs) -> List[Dict]:
+    """Cross-KB, but still scoped to group/chapter"""
     from services.knowledge_manager import kb_manager
-
-    if not kb_ids:
-        return []
-
+    if not kb_ids: return []
     kbs = kb_manager.get_kbs_by_ids(kb_ids)
-    if not kbs:
-        return []
-
+    if not kbs: return []
     searcher = HybridSearcher(**searcher_kwargs)
-    all_results = []
-    seen = set()
-
+    all_results, seen = [], set()
     for kb in kbs:
         try:
-            results = searcher.search(kb['collection_name'], query)
+            results = searcher.search(kb['collection_name'], query, group=group, chapter=chapter)
             for r in results:
                 h = hashlib.md5(r['document'].encode()).hexdigest()
                 if h not in seen:
@@ -195,96 +184,50 @@ def hybrid_query_multiple(kb_ids: List[str], query: str, **searcher_kwargs) -> L
                     r['kb_name'] = kb['name']
                     all_results.append(r)
         except Exception as e:
-            print(f"Hybrid search failed for KB {kb['name']}: {e}")
-
+            print(f"Hybrid search KB {kb['name']} failed: {e}")
     all_results.sort(key=lambda x: x['score'], reverse=True)
     return all_results[:searcher.top_k]
 
 
-# ---- 分组加权混合检索 ----
 class GroupedHybridSearcher:
-    """按分组精准调用知识库，每组独立权重/top_k/阈值。
-
-    用法示例：
-        groups = {
-            "terminology": {"kb_ids": [...], "weight": 1.2, "top_k": 3, "threshold": 0.5},
-            "background":  {"kb_ids": [...], "weight": 0.8, "top_k": 2, "threshold": 0.3},
-        }
-        searcher = GroupedHybridSearcher(groups)
-        results = searcher.search(query)            # 搜全部分组
-        results = searcher.search(query, "terminology")  # 只搜术语组
-    """
-
+    """Group-scoped: each group has independent kb_ids, weight, top_k, threshold"""
     def __init__(self, kb_groups: Dict[str, Dict]):
         self.groups = kb_groups
 
-    def _search_group(self, query: str, group_cfg: Dict) -> List[Dict]:
-        """搜索单个分组"""
-        from services.knowledge_manager import kb_manager
-
-        kb_ids = group_cfg.get("kb_ids", [])
-        top_k = group_cfg.get("top_k", 2)
-        threshold = group_cfg.get("threshold", 0.3)
-        sem_w = group_cfg.get("semantic_weight", 0.7)
-        kw_w = group_cfg.get("keyword_weight", 0.3)
-
-        if not kb_ids:
-            return []
-
-        return hybrid_query_multiple(
-            kb_ids, query,
-            top_k=top_k,
-            score_threshold=threshold,
-            semantic_weight=sem_w,
-            keyword_weight=kw_w,
-        )
-
-    def search(self, query: str, group_name: str = None) -> List[Dict]:
-        """搜索知识库
-
-        Args:
-            query: 查询文本
-            group_name: 指定分组名称。None 时搜索所有分组并加权合并。
-
-        Returns:
-            去重排序后的结果列表
-        """
+    def search(self, query: str, group_name: str = None,
+               chapter: str = None) -> List[Dict]:
         if group_name:
-            group = self.groups.get(group_name)
-            if not group:
-                return []
-            results = self._search_group(query, group)
-            for r in results:
-                r["group"] = group_name
-            return results
+            g = self.groups.get(group_name)
+            if not g: return []
+            res = hybrid_query_multiple(
+                g.get("kb_ids", []), query,
+                group=group_name, chapter=chapter,
+                top_k=g.get("top_k", 2),
+                score_threshold=g.get("threshold", 0.35),
+                semantic_weight=g.get("semantic_weight", 0.6),
+                keyword_weight=g.get("keyword_weight", 0.4),
+            )
+            for r in res: r["group"] = group_name
+            return res
 
-        # 搜索所有分组，加权合并
-        all_results = []
-        seen = set()
-
-        for name, group_cfg in self.groups.items():
-            weight = group_cfg.get("weight", 1.0)
-            results = self._search_group(query, group_cfg)
-
-            for r in results:
-                h = hashlib.md5(r.get('document', '').encode()).hexdigest()
+        # all groups
+        out, seen = [], set()
+        for name, cfg in self.groups.items():
+            weight = cfg.get("weight", 1.0)
+            res = hybrid_query_multiple(
+                cfg.get("kb_ids", []), query,
+                group=name, chapter=chapter,
+                top_k=cfg.get("top_k", 2),
+                score_threshold=cfg.get("threshold", 0.35),
+                semantic_weight=cfg.get("semantic_weight", 0.6),
+                keyword_weight=cfg.get("keyword_weight", 0.4),
+            )
+            for r in res:
+                h = hashlib.md5(r.get('document','').encode()).hexdigest()
                 if h not in seen:
                     seen.add(h)
                     r["group"] = name
-                    r["score"] *= weight  # 分组加权
-                    all_results.append(r)
-
-        all_results.sort(key=lambda x: x["score"], reverse=True)
-        return self._deduplicate(all_results)[:5]
-
-    @staticmethod
-    def _deduplicate(results: List[Dict]) -> List[Dict]:
-        """按文档内容去重，保留分数最高的"""
-        seen = set()
-        unique = []
-        for r in results:
-            h = hashlib.md5(r.get('document', '').encode()).hexdigest()
-            if h not in seen:
-                seen.add(h)
-                unique.append(r)
-        return unique
+                    r["score"] *= weight
+                    out.append(r)
+        out.sort(key=lambda x: x["score"], reverse=True)
+        return out[:5]
