@@ -15,7 +15,7 @@ import {
 } from "@/hooks/use-training";
 import { loadSeedData as apiLoadSeed, importParagraphPairs } from "@/lib/api";
 import { toast } from "sonner";
-import { Database, Zap, Square, Play, Download, Brain, Cpu, RefreshCw, Terminal, Upload, Sparkles } from "lucide-react";
+import { Database, Zap, Square, Play, Download, Brain, Cpu, RefreshCw, Terminal, Upload, Sparkles, Plus, X } from "lucide-react";
 
 const BASE_MODELS = [
   { id: "Tencent-Hunyuan/Hy-MT2-1.8B", label: "Hy-MT2-1.8B (混元翻译二代 ⭐推荐)" },
@@ -69,9 +69,41 @@ export function TrainingTab() {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logData?.lines]);
 
-  // Seed + paragraph import
+  // 翻译对队列 (用户友好的表单录入)
+  const [queue, setQueue] = useState<Array<{ source: string; target: string }>>([]);
+  const [srcInput, setSrcInput] = useState("");
+  const [tgtInput, setTgtInput] = useState("");
   const [importingSeed, setImportingSeed] = useState(false);
-  const [paraText, setParaText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [showBatch, setShowBatch] = useState(false);
+
+  // 从纯文本清洗 HTML 标签
+  const cleanHtml = (text: string) => text.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+
+  const addToQueue = () => {
+    const s = cleanHtml(srcInput).trim();
+    const t = cleanHtml(tgtInput).trim();
+    if (s.length < 10) { toast.error("原文太短（至少10字符）"); return; }
+    if (t.length < 5) { toast.error("译文太短（至少5字符）"); return; }
+    const dup = queue.find((q) => q.source === s);
+    if (dup) { toast.error("此翻译对已在队列中"); return; }
+    setQueue([...queue, { source: s, target: t }]);
+    setSrcInput(""); setTgtInput("");
+    toast.success(`已添加 #${queue.length + 1}`);
+  };
+
+  const removeFromQueue = (idx: number) => setQueue(queue.filter((_, i) => i !== idx));
+
+  const submitQueue = async () => {
+    if (queue.length === 0) { toast.error("队列为空，请先添加翻译对"); return; }
+    setSubmitting(true);
+    try {
+      const r = await importParagraphPairs({ pairs: queue });
+      if (r.success) { toast.success(`已导入 ${r.imported} 段`); setQueue([]); refetchData(); }
+      else toast.error(r.error || "导入失败");
+    } catch { toast.error("提交失败"); }
+    finally { setSubmitting(false); }
+  };
 
   const handleLoadSeed = async () => {
     setImportingSeed(true);
@@ -80,26 +112,45 @@ export function TrainingTab() {
       if (r.success) toast.success(`种子数据已导入: ${r.imported} 条${r.skipped ? ` (跳过${r.skipped}条重复)` : ""}`);
       else toast.error(r.error);
       refetchData();
-    } catch (e) { toast.error("导入失败"); }
+    } catch { toast.error("导入失败"); }
     finally { setImportingSeed(false); }
   };
 
-  const handleImportParas = async () => {
-    if (!paraText.trim()) { toast.error("请粘贴翻译对数据"); return; }
+  // 批量粘贴：自动拆分多对
+  const [batchText, setBatchText] = useState("");
+  const handleBatchPaste = () => {
+    const text = batchText.trim();
+    if (!text) return;
+    let added = 0;
+    // 尝试 JSON 格式
     try {
-      const parsed = JSON.parse(paraText.trim());
+      const parsed = JSON.parse(text);
       const pairs = Array.isArray(parsed) ? parsed : [parsed];
-      // 支持 source/target 和 原文/译文 两种 key 格式
-      const normalized = pairs.map((p: Record<string, string>) => {
-        if (p.source && p.target) return p;
-        if (p["原文"] && p["译文"]) return { source: p["原文"], target: p["译文"] };
-        if (p.input && p.output) return { source: p.input, target: p.output };
-        return p;
-      });
-      const r = await importParagraphPairs({ pairs: normalized });
-      if (r.success) { toast.success(`导入 ${r.imported} 段`); setParaText(""); refetchData(); }
-      else toast.error(r.error || "导入失败");
-    } catch { toast.error("JSON 格式错误，请检查数据格式"); }
+      for (const p of pairs) {
+        const s = cleanHtml(p.source || p["原文"] || p.input || "");
+        const t = cleanHtml(p.target || p["译文"] || p.output || "");
+        if (s.length >= 10 && t.length >= 5 && !queue.find((q) => q.source === s)) {
+          setQueue((prev) => [...prev, { source: s, target: t }]);
+          added++;
+        }
+      }
+    } catch {
+      // 尝试用空行分隔的纯文本格式 (原文\n译文\n\n原文\n译文...)
+      const blocks = text.split(/\n\s*\n/);
+      for (const block of blocks) {
+        const lines = block.split("\n").filter((l) => l.trim());
+        if (lines.length >= 2) {
+          const s = cleanHtml(lines[0]);
+          const t = cleanHtml(lines[1]);
+          if (s.length >= 10 && t.length >= 5 && !queue.find((q) => q.source === s)) {
+            setQueue((prev) => [...prev, { source: s, target: t }]);
+            added++;
+          }
+        }
+      }
+    }
+    if (added > 0) { toast.success(`批量添加 ${added} 对`); setBatchText(""); }
+    else { toast.error("未识别到有效翻译对"); }
   };
 
   const handleExport = async () => {
@@ -160,19 +211,60 @@ export function TrainingTab() {
               <Download className="h-3 w-3 mr-1" />{exportData.isPending ? "导出中..." : "导出 TM 数据"}
             </Button>
           </div>
-          {/* 段落对导入 */}
-          <details className="text-sm">
-            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">粘贴 "原文/译文" 翻译对</summary>
-            <textarea
-              className="w-full h-[100px] mt-2 p-2 border rounded text-xs font-mono resize-y"
-              placeholder={'[{source:"The Treaty...",target:"条约..."},{source:"In 395...",target:"公元395年..."}]'}
-              value={paraText}
-              onChange={(e) => setParaText(e.target.value)}
-            />
-            <Button size="sm" variant="outline" onClick={handleImportParas} className="mt-1">
-              <Upload className="h-3 w-3 mr-1" />导入翻译对
-            </Button>
-          </details>
+          {/* 翻译对表单录入 */}
+          <div className="mt-4 pt-3 border-t">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm font-medium">录入翻译对</span>
+              <Badge variant="secondary" className="text-xs">{queue.length} 条待提交</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">原文 (English)</label>
+                <textarea className="w-full h-[80px] mt-1 p-2 border rounded text-sm resize-y font-sans"
+                  placeholder="粘贴英文原文... HTML 标签会自动清理"
+                  value={srcInput} onChange={(e) => setSrcInput(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">译文 (中文)</label>
+                <textarea className="w-full h-[80px] mt-1 p-2 border rounded text-sm resize-y font-sans"
+                  placeholder="粘贴中文译文..."
+                  value={tgtInput} onChange={(e) => setTgtInput(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Button size="sm" onClick={addToQueue}><Plus className="h-3 w-3 mr-1" />添加到队列</Button>
+              <Button size="sm" variant="outline" onClick={submitQueue} disabled={queue.length === 0 || submitting}>
+                <Upload className="h-3 w-3 mr-1" />{submitting ? "提交中..." : `提交 ${queue.length} 条`}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowBatch(!showBatch)}>批量粘贴</Button>
+            </div>
+            {showBatch && (
+              <div className="mt-2">
+                <textarea className="w-full h-[80px] p-2 border rounded text-xs font-mono resize-y"
+                  placeholder={'支持 JSON: [{"source":"...","target":"..."}]\n或纯文本: 原文\\n译文\\n\\n原文\\n译文'}
+                  value={batchText} onChange={(e) => setBatchText(e.target.value)} />
+                <Button size="sm" variant="ghost" onClick={handleBatchPaste} className="mt-1">识别并导入</Button>
+              </div>
+            )}
+            {/* 队列预览 */}
+            {queue.length > 0 && (
+              <ScrollArea className="h-[120px] mt-2 border rounded">
+                <div className="p-2 space-y-1">
+                  {queue.map((q, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs p-1.5 rounded hover:bg-muted/50 group">
+                      <span className="text-muted-foreground shrink-0">{i + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate font-medium">{q.source.substring(0, 80)}</p>
+                        <p className="truncate text-green-700 dark:text-green-400">{q.target.substring(0, 80)}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 shrink-0"
+                        onClick={() => removeFromQueue(i)}><X className="h-3 w-3" /></Button>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
         </CardContent>
       </Card>
 
