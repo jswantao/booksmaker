@@ -27,14 +27,17 @@ translation_memory.db
 Thumbs.db
 
 
-# 现有内容保留...
 
 # 模型文件（本地下载的 HuggingFace 模型）
-
+models\AI-ModelScope
 *.bin
 *.safetensors
 *.pth
 *.ckpt
+._____temp
+.lock
+
+memory_banks/
 
 # 日志文件
 *.log
