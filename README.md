@@ -4,17 +4,24 @@
 
 ## 快速启动
 
+### 后端 API 服务
 ```bash
-# 1. 安装依赖
-pip install -r requirements.txt
+# 1. 安装 Python 依赖
+pip install -r backend/requirements.txt
 
-# 2. (可选) 设置 ModelScope 下载源（国内加速）
-set HF_ENDPOINT=https://hf-mirror.com
-set MODELSCOPE_CACHE_DIR=G:\huggingface_cache
+# 2. 启动后端 API (端口 8008)
+python run.py
+# 或: cd backend && python app.py
+```
 
-# 3. 启动服务
-python app.py
-# 访问 http://localhost:8008
+### 前端 (Next.js)
+```bash
+# 3. 安装前端依赖
+cd frontend && npm install
+
+# 4. 启动前端开发服务器 (端口 3000)
+npm run dev
+# 访问 http://localhost:3000
 ```
 
 启动后，在配置面板选择「本地模型 (Qwen2-7B-Instruct)」→「保存并测试」，首次会下载模型。
@@ -22,66 +29,34 @@ python app.py
 ## 项目结构
 
 ```
-├── app.py                           # FastAPI 入口
-├── config.py                        # 全局配置与环境变量
-├── agents.py                        # Agent 定义（世界史专家 + EPUB 编辑）
-├── model_providers.py               # LLM 抽象层 (OpenAI + 本地 Transformers)
-├── embedding_providers.py           # 嵌入抽象层 (OpenAI + BGE 本地)
-├── requirements.txt                 # Python 依赖
+├── run.py                           # 启动入口 (从根目录一键启动后端)
+├── README.md
 │
-├── api/                             # API 路由层
-│   ├── __init__.py                  # 路由聚合
-│   ├── config.py                    # 配置端点
-│   ├── translate.py                 # 单句翻译端点
-│   ├── epub.py                      # EPUB 替换端点
-│   ├── tm.py                        # 翻译记忆库 CRUD
-│   ├── knowledge.py                 # 知识库/分组/混合检索
-│   └── pipeline.py                  # 翻译流水线 API
+├── backend/                         # Python 后端 (FastAPI)
+│   ├── app.py                       # FastAPI 应用工厂 + 入口
+│   ├── config.py                    # 全局配置与环境变量
+│   ├── agents.py                    # Agent 定义 (4 个 Agent)
+│   ├── model_providers.py           # LLM 抽象层
+│   ├── embedding_providers.py       # 嵌入抽象层
+│   ├── requirements.txt             # Python 依赖
+│   ├── api/                         # API 路由 (8 模块)
+│   ├── core/                        # 核心基础设施 (3 模块)
+│   ├── models/                      # Pydantic 数据模型
+│   ├── services/                    # 业务服务 (10 模块)
+│   └── utils/                       # 工具
 │
-├── core/                            # 核心基础设施
-│   ├── database.py                  # ChromaDB 持久化客户端
-│   └── dependencies.py              # OpenAI 客户端工厂 + LLM 同步
+├── frontend/                        # Next.js 前端 (独立项目)
+│   ├── src/app/                     # 入口 + 布局
+│   ├── src/components/              # React 组件 (35+)
+│   ├── src/hooks/                   # TanStack Query hooks
+│   ├── src/lib/                     # API 客户端
+│   ├── src/stores/                  # Zustand 状态
+│   └── src/types/                   # TS 类型定义
 │
-├── models/                          # 数据模型
-│   ├── schemas.py                   # Pydantic 请求/响应模型
-│   └── agent.py                     # Agent 数据模型
-│
-├── services/                        # 业务服务层
-│   ├── translation_memory.py        # TM: SQLite + ChromaDB 双存
-│   ├── knowledge_manager.py         # KB 元数据管理 (SQLite)
-│   ├── knowledge_service.py         # RAG 操作 (添加/查询/多KB)
-│   ├── embedding_service.py         # 嵌入提供者同步
-│   
-│   
-│   ├── hybrid_search.py             # 混合检索 (向量 + 关键词)
-│   ├── memory_bank.py               # JSON 记忆库 (术语/摘要/进度)
-│   
-│   └── translation_pipeline.py      # 翻译流水线编排
-│
-├── templates/
-│   └── index.html                   # 前端 SPA (三标签页)
-│
-├── static/
-│   ├── app.js                       # 前端入口
-│   ├── api.js                       # HTTP API 通信层
-│   ├── config.js                    # 常量定义
-│   ├── dom.js                       # DOM 缓存 + 事件委托
-│   ├── state.js                     # 全局应用状态
-│   ├── ui.js                        # 渲染函数
-│   ├── utils.js                     # 工具函数
-│   └── modules/
-│       ├── config-panel.js          # API 配置面板
-│       ├── translator.js            # 翻译/EPUB 提交
-│       ├── kb-manager.js            # 知识库管理
-│       ├── tm-manager.js            # 翻译记忆库管理
-│       ├── pipeline.js              # 翻译流水线面板
-│       └── theme.js                 # 暗色/亮色主题
-│
-├── chroma_db/                       # ChromaDB 向量库 (自动创建)
-├── uploads/                         # 文件上传目录
-├── memory/                          # 记忆库 JSON 文件
-├── translation_memory.db            # SQLite 翻译记忆库
-└── kb_manager.db                    # SQLite 知识库元数据
+├── data/                            # 持久化数据库
+├── chroma_db/                       # ChromaDB 向量库
+├── uploads/                         # 文件上传
+└── memory_banks/                    # 记忆库 JSON
 ```
 
 ## 技术栈
@@ -168,7 +143,7 @@ EmbeddingManager (单例，线程安全切换)
 
 - 知识库 CRUD（创建/编辑/删除）
 - 分组管理
-- Agent-KB 分配（为不同智能体绑定默认知识库）
+- Agent-KB 分配（为不同 Agent 绑定默认知识库：ParagraphTranslator / EpubReplacer / KBBuilder / LongTextTranslator）
 - 文档上传（TXT/PDF）
 - KB 选择器（翻译/EPUB 面板各自选择）
 
