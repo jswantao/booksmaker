@@ -1,4 +1,7 @@
 # api/config.py — Config endpoints v3
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi import APIRouter, Query
 from models.schemas import ApiConfigRequest
 from config import user_api_config
@@ -11,6 +14,7 @@ import urllib.request
 import json
 
 router = APIRouter()
+_model_loader_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="model-loader")
 
 # ---- 根路径 ----
 
@@ -30,9 +34,41 @@ async def root():
 @router.post("/api/config")
 async def set_config(req: ApiConfigRequest):
     user_api_config.update(req.model_dump())
-    sync_embedding_manager()
-    sync_llm_manager()
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(_model_loader_pool, _load_models_sync)
     return {"success": True, "message": "配置已保存", "provider": user_api_config.get("llm_provider")}
+
+
+@router.patch("/api/config")
+async def patch_config(req: ApiConfigRequest):
+    """Partial update: only overwrites fields explicitly provided in the request body."""
+    user_api_config.update(req.model_dump(exclude_unset=True))
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(_model_loader_pool, _load_models_sync)
+    return {"success": True, "message": "配置已更新", "provider": user_api_config.get("llm_provider")}
+
+
+def _load_models_sync():
+    """在线程池中同步配置嵌入和 LLM 模型，并预加载默认模型权重"""
+    try:
+        sync_embedding_manager()
+    except Exception as e:
+        print(f"[模型加载] 嵌入模型加载失败: {e}")
+    try:
+        sync_llm_manager()
+    except Exception as e:
+        print(f"[模型加载] LLM 配置失败: {e}")
+    # 预加载默认模型权重（仅一个 provider，避免 6GB VRAM OOM）
+    try:
+        provider = LLMManager().get_provider("default")
+        if (provider and hasattr(provider, '_ensure_model_loaded')
+                and getattr(provider, 'load_status', None) != 'ready'):
+            print(f"[预加载] 开始加载: {provider.model_name}")
+            provider._ensure_model_loaded()
+        elif provider and getattr(provider, 'load_status', None) == 'ready':
+            print(f"[预加载] 模型已就绪，跳过: {provider.model_name}")
+    except Exception as e:
+        print(f"[预加载] 失败 (首次翻译时重试): {e}")
 
 @router.get("/api/config")
 async def get_config():
@@ -59,9 +95,11 @@ async def get_embedding_status():
 
 # 已知 ≤7B 的优质小模型列表（离线兜底）
 _PRESET_SMALL_MODELS = [
-    {"id": "Tencent-Hunyuan/Hy-MT2-1.8B", "name": "Hy-MT2-1.8B", "params": "1.8B", "family": "Hunyuan", "desc": "腾讯混元翻译二代，1.8B轻量，魔搭独占，微调首选"},
-    {"id": "Tencent-Hunyuan/Hunyuan-MT-7B", "name": "Hunyuan-MT-7B", "params": "7B", "family": "Hunyuan", "desc": "腾讯混元翻译一代，7B，魔搭独占"},
-    {"id": "Qwen/Qwen2.5-7B-Instruct", "name": "Qwen2.5-7B-Instruct", "params": "7B", "family": "Qwen", "desc": "阿里通义千问2.5，7B指令版，综合能力强"},
+    {"id": "Tencent-Hunyuan/Hy-MT2-1.8B", "name": "Hy-MT2-1.8B", "params": "1.8B", "family": "Hunyuan", "desc": "混元翻译二代，1.8B轻量，魔搭独占，微调首选"},
+    {"id": "Tencent-Hunyuan/Hunyuan-MT-7B", "name": "Hunyuan-MT-7B", "params": "7B", "family": "Hunyuan", "desc": "混元翻译一代，7B，魔搭独占"},
+    {"id": "Qwen/Qwen3.5-4B", "name": "Qwen3.5-4B", "params": "4B", "family": "Qwen", "desc": "通义千问3.5，4B最新版，推理+翻译强 ⭐新"},
+    {"id": "Qwen/Qwen3.5-8B", "name": "Qwen3.5-8B", "params": "8B", "family": "Qwen", "desc": "通义千问3.5，8B最新版 ⚠超7B"},
+    {"id": "Qwen/Qwen2.5-7B-Instruct", "name": "Qwen2.5-7B-Instruct", "params": "7B", "family": "Qwen", "desc": "通义千问2.5，7B指令版，综合能力强"},
     {"id": "Qwen/Qwen2.5-3B-Instruct", "name": "Qwen2.5-3B-Instruct", "params": "3B", "family": "Qwen", "desc": "阿里通义千问2.5，3B轻量指令版"},
     {"id": "Qwen/Qwen2.5-1.5B-Instruct", "name": "Qwen2.5-1.5B-Instruct", "params": "1.5B", "family": "Qwen", "desc": "阿里通义千问2.5，1.5B超轻量，CPU可用"},
     {"id": "Qwen/Qwen2.5-0.5B-Instruct", "name": "Qwen2.5-0.5B-Instruct", "params": "0.5B", "family": "Qwen", "desc": "阿里通义千问2.5，0.5B迷你版，CPU可用"},
@@ -84,6 +122,8 @@ _PRESET_SMALL_MODELS = [
 
 # HF ID → ModelScope ID 映射（用于检查 ModelScope 可用性）
 _MODELSCOPE_ID_MAP = {
+    "Qwen/Qwen3.5-4B": "qwen/Qwen3.5-4B",
+    "Qwen/Qwen3.5-8B": "qwen/Qwen3.5-8B",
     "Qwen/Qwen2.5-7B-Instruct": "qwen/Qwen2.5-7B-Instruct",
     "Qwen/Qwen2.5-3B-Instruct": "qwen/Qwen2.5-3B-Instruct",
     "Qwen/Qwen2.5-1.5B-Instruct": "qwen/Qwen2.5-1.5B-Instruct",

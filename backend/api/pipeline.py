@@ -1,4 +1,5 @@
 # api/pipeline.py — Translation Pipeline API v3
+import asyncio
 from fastapi import APIRouter, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import List, Optional
@@ -49,7 +50,7 @@ async def pipeline_run(req: PipelineRunRequest):
     book_title = req.book_title or Path(req.file_path).stem
     pipe = TranslationPipeline(book_title=book_title, kb_ids=req.kb_ids, task=req.task)
     _pipelines[book_title] = pipe
-    output = pipe.run_long_text(req.file_path)
+    output = await asyncio.to_thread(pipe.run_long_text, req.file_path)
     return {"success": True, "output_chars": len(output), "book": book_title}
 
 
@@ -89,7 +90,7 @@ async def pipeline_build_kb(req: PipelineBuildKbRequest):
         kb = kb_manager.create_kb(name=req.kb_name, description=f"From {req.file_path}")
 
     metadatas = [{"source": req.file_path, "chunk_index": str(i)} for i in range(len(chunks))]
-    ids = add_to_knowledge(kb["collection_name"], chunks, metadatas)
+    ids = await asyncio.to_thread(add_to_knowledge, kb["collection_name"], chunks, metadatas)
     kb_manager.update_document_count(kb["id"])
     return {"success": True, "kb_id": kb["id"], "chunks": len(ids)}
 

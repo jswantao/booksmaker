@@ -49,7 +49,7 @@ export function TerminologySection() {
           {Object.entries(terms).slice(0, 30).map(([en, zh]) => (
             <div key={en} className="flex justify-between items-center text-xs p-1 border-b border-border">
               <span><b>{en}</b> → {zh}</span>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => handleDelete(en)}>
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0 shrink-0" onClick={() => handleDelete(en)}>
                 <X className="h-3 w-3" />
               </Button>
             </div>

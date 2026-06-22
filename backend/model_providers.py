@@ -93,6 +93,14 @@ class LLMProvider(ABC):
         """
         ...
 
+    def chat_stream(self, messages: List[Dict[str, str]], **gen_kwargs):
+        """流式生成回复（默认实现：一次性返回 chat() 结果）
+
+        Yields:
+            str: 增量文本片段
+        """
+        yield self.chat(messages, **gen_kwargs)
+
     def chat_with_retry(self, messages: List[Dict[str, str]], **gen_kwargs) -> str:
         """带重试机制的聊天接口"""
         max_retries = gen_kwargs.pop('max_retries', self.config.max_retries)
@@ -245,6 +253,38 @@ class OpenAILLMProvider(LLMProvider):
                 raise LLMError(f"上下文超长: {e}. 请缩短输入或使用更长的模型。")
             raise LLMError(f"OpenAI API 调用失败: {e}")
 
+    def chat_stream(self, messages: List[Dict[str, str]], **gen_kwargs):
+        """流式调用 OpenAI API，逐 chunk yield 增量文本"""
+        if not messages:
+            raise ValueError("消息列表不能为空")
+
+        merged_kwargs = {
+            "temperature": self.config.temperature,
+            "max_tokens": self.config.max_tokens,
+            "top_p": self.config.top_p,
+        }
+        merged_kwargs.update(gen_kwargs)
+        kwargs = self._filter_params(merged_kwargs)
+
+        try:
+            stream = self._client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                stream=True,
+                **kwargs
+            )
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    yield delta.content
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "context_length" in error_msg or "maximum context" in error_msg:
+                raise LLMError(f"上下文超长: {e}. 请缩短输入或使用更长的模型。")
+            raise LLMError(f"OpenAI API 流式调用失败: {e}")
+
     def warm_up(self):
         """预热：发送测试请求"""
         try:
@@ -267,12 +307,16 @@ class TransformersLLMProvider(LLMProvider):
 
     # ModelScope ID 映射表 (HF → ModelScope)
     MODELSCOPE_MAPPING = {
-        # Qwen 系列
+        # Qwen3.5 系列 (最新)
+        "Qwen/Qwen3.5-4B": "qwen/Qwen3.5-4B",
+        "Qwen/Qwen3.5-8B": "qwen/Qwen3.5-8B",
+        # Qwen2.5 系列
         "Qwen/Qwen2.5-7B-Instruct": "qwen/Qwen2.5-7B-Instruct",
         "Qwen/Qwen2.5-3B-Instruct": "qwen/Qwen2.5-3B-Instruct",
         "Qwen/Qwen2.5-1.5B-Instruct": "qwen/Qwen2.5-1.5B-Instruct",
         "Qwen/Qwen2.5-0.5B-Instruct": "qwen/Qwen2.5-0.5B-Instruct",
         "Qwen/Qwen2.5-14B-Instruct": "qwen/Qwen2.5-14B-Instruct",
+        # Qwen2 系列
         "Qwen/Qwen2-7B-Instruct": "qwen/Qwen2-7B-Instruct",
         "Qwen/Qwen2-1.5B-Instruct": "qwen/Qwen2-1.5B-Instruct",
         # ChatGLM 系列
@@ -285,8 +329,7 @@ class TransformersLLMProvider(LLMProvider):
         "deepseek-ai/deepseek-coder-6.7b-instruct": "deepseek-ai/deepseek-coder-6.7b-instruct",
         "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
         # Hunyuan 系列
-        "tencent/Hunyuan-7B-Instruct": None,  # ModelScope 上可能不存在
-        # Hunyuan-MT (ModelScope 独占翻译模型)
+        "tencent/Hunyuan-7B-Instruct": None,
         "Tencent-Hunyuan/Hunyuan-MT-7B": "Tencent-Hunyuan/Hunyuan-MT-7B",
         # Hy-MT2 系列 (混元翻译二代)
         "Tencent-Hunyuan/Hy-MT2-1.8B": "Tencent-Hunyuan/Hy-MT2-1.8B",
@@ -488,15 +531,15 @@ class TransformersLLMProvider(LLMProvider):
         return self._model_id
 
     def _find_local_model(self) -> Optional[str]:
-        """查找本地缓存的模型（搜索顺序：用户指定 → 项目目录 → 系统缓存）"""
+        """查找本地缓存的模型（搜索顺序：用户指定 → 合并模型 → 缓存目录 → 旧版目录）"""
         # 1. 检查用户指定路径
         custom_path = os.environ.get("LLM_MODEL_PATH")
         if custom_path and os.path.exists(custom_path):
             print(f"✅ 找到本地模型: {custom_path}")
             return custom_path
 
-        # 2. 检查项目目录下的 models/
-        from config import PROJECT_ROOT
+        # 2. 搜索模型缓存和合并模型目录
+        from config import PROJECT_ROOT, MERGED_MODELS_DIR, LEGACY_MODELS_DIR
         search_dirs = []
         cache_dir = self._load_config.cache_dir
         if cache_dir:
@@ -504,6 +547,10 @@ class TransformersLLMProvider(LLMProvider):
         search_dirs.append(str(PROJECT_ROOT / "model_cache"))
         search_dirs.append(str(PROJECT_ROOT / "model_cache" / ".ms"))
         search_dirs.append(str(PROJECT_ROOT / "model_cache" / ".hf" / "hub"))
+        # 合并后的模型目录（新路径 + 旧路径兼容）
+        search_dirs.append(MERGED_MODELS_DIR)
+        if os.path.isdir(LEGACY_MODELS_DIR):
+            search_dirs.append(LEGACY_MODELS_DIR)
 
         for base_dir in search_dirs:
             if not os.path.isdir(base_dir):
@@ -790,11 +837,17 @@ class TransformersLLMProvider(LLMProvider):
             # Tokenize
             inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
             input_length = inputs.input_ids.shape[1]
-            
+
+            # decoder-only 模型不支持 token_type_ids，只保留必要字段
+            gen_inputs = {
+                "input_ids": inputs["input_ids"],
+                "attention_mask": inputs["attention_mask"],
+            }
+
             import torch
             with torch.inference_mode():
                 outputs = self._model.generate(
-                    **inputs,
+                    **gen_inputs,
                     max_new_tokens=max_new_tokens,
                     temperature=temperature if temperature > 0 else 1.0,
                     do_sample=temperature > 0,
@@ -834,6 +887,82 @@ class TransformersLLMProvider(LLMProvider):
             if "out of memory" in str(e).lower():
                 raise OutOfMemoryError(f"内存不足: {e}")
             raise GenerationError(f"生成失败: {e}")
+        finally:
+            cleanup_vram()
+
+    def chat_stream(self, messages: List[Dict[str, str]], **gen_kwargs):
+        """流式生成回复：使用 TextIteratorStreamer + 后台线程，逐 token yield"""
+        if not messages:
+            raise ValueError("消息列表不能为空")
+
+        self._ensure_model_loaded()
+
+        try:
+            from transformers import TextIteratorStreamer
+
+            prompt = self._build_prompt(messages)
+            prompt = self._apply_context_budget(prompt)
+
+            temperature = gen_kwargs.get("temperature", self.config.temperature)
+            max_new_tokens = gen_kwargs.get("max_tokens", self.config.max_tokens)
+            top_p = gen_kwargs.get("top_p", self.config.top_p)
+            top_k = gen_kwargs.get("top_k", self.config.top_k)
+
+            inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
+            gen_inputs = {
+                "input_ids": inputs["input_ids"],
+                "attention_mask": inputs["attention_mask"],
+            }
+
+            streamer = TextIteratorStreamer(
+                self._tokenizer,
+                skip_prompt=True,
+                skip_special_tokens=True,
+            )
+
+            gen_error = [None]
+
+            def _run_generate():
+                try:
+                    import torch
+                    with torch.inference_mode():
+                        self._model.generate(
+                            **gen_inputs,
+                            max_new_tokens=max_new_tokens,
+                            temperature=temperature if temperature > 0 else 1.0,
+                            do_sample=temperature > 0,
+                            top_p=top_p,
+                            top_k=top_k,
+                            pad_token_id=self._tokenizer.pad_token_id,
+                            eos_token_id=self._tokenizer.eos_token_id,
+                            repetition_penalty=self.config.repetition_penalty,
+                            streamer=streamer,
+                        )
+                except Exception as e:
+                    gen_error[0] = e
+
+            t = threading.Thread(target=_run_generate, daemon=True)
+            t.start()
+
+            for text in streamer:
+                if text:
+                    yield text
+
+            t.join()
+
+            if gen_error[0]:
+                err = gen_error[0]
+                err_msg = str(err).lower()
+                if "out of memory" in err_msg:
+                    cleanup_vram()
+                    raise OutOfMemoryError(f"显存/内存不足: {err}")
+                raise GenerationError(f"流式生成失败: {err}")
+
+            self._generation_count += 1
+
+        except Exception:
+            cleanup_vram()
+            raise
         finally:
             cleanup_vram()
 
@@ -938,6 +1067,15 @@ class LLMManager:
         if "max_retries" in gen_kwargs or "retry_delay" in gen_kwargs:
             return provider.chat_with_retry(messages, **gen_kwargs)
         return provider.chat(messages, **gen_kwargs)
+
+    def chat_stream(self, messages: List[Dict[str, str]], task: str = "default", **gen_kwargs):
+        """统一流式生成接口，yield 增量文本片段"""
+        provider = self.get_provider(task)
+        if provider is None:
+            raise ProviderNotConfiguredError(
+                "未配置 LLM 提供者。请先调用 configure_openai() 或 configure_local()"
+            )
+        yield from provider.chat_stream(messages, **gen_kwargs)
 
     def get_all_status(self) -> Dict[str, Dict[str, Any]]:
         """返回所有任务的状态"""

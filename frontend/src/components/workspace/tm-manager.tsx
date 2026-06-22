@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useTmList, useAddTm, useDeleteTm, useClearTm } from "@/hooks/use-tm";
 import type { TmEntry } from "@/types/api";
-import { Trash2, RefreshCw } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export function TmManager() {
@@ -73,7 +73,7 @@ export function TmManager() {
                     <p className="truncate text-foreground">{e.source}</p>
                     <p className="truncate text-green-700 dark:text-green-400">{e.target}</p>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(e.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => handleDelete(e.id)} className="shrink-0">
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>

@@ -26,17 +26,10 @@ export function MemoryTab() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "seed" | "auto">("all");
 
-  // Auto-detect memory path from localStorage or book name input
+  // Auto-detect memory path from localStorage
   useEffect(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("lastMemoryPath") : null;
     if (stored) setAutoPath(stored);
-    // Also try to read from translate book input in the workspace
-    const bookInput = typeof document !== "undefined" ? document.getElementById("translateBook") : null;
-    if (bookInput && (bookInput as HTMLInputElement).value) {
-      const book = (bookInput as HTMLInputElement).value.trim();
-      const derived = `memory/${book.replace(/[\\/:*?"<>|]/g, "_")}_memory.json`;
-      setAutoPath(derived);
-    }
   }, []);
 
   useEffect(() => {
@@ -121,9 +114,9 @@ export function MemoryTab() {
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2 flex-wrap">
             <Input placeholder="记忆库路径" value={pathInput} onChange={(e) => setPathInput(e.target.value)}
-              className="flex-1 max-w-md text-xs" />
+              className="w-full sm:flex-1 sm:max-w-md text-xs" />
             {autoPath && !pathInput && <span className="text-xs text-muted-foreground">自动检测: {autoPath}</span>}
-            <Button size="sm" onClick={() => { setMemoryPath(pathInput || autoPath); setTimeout(refetch, 100); }}>加载</Button>
+            <Button size="sm" onClick={() => { setMemoryPath(pathInput || autoPath); refetch(); }}>加载</Button>
             <Button variant="outline" size="sm" onClick={handleExport}><Download className="h-3 w-3 mr-1" />导出</Button>
             <Button variant="outline" size="sm" onClick={handleImport}><UploadIcon className="h-3 w-3 mr-1" />导入</Button>
             <Button variant="outline" size="sm" onClick={handleInit}><Rocket className="h-3 w-3 mr-1" />初始化</Button>

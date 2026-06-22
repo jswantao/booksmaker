@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ShinyButton } from "@/components/ui/shiny-button";
 import { Badge } from "@/components/ui/badge";
 import { OutputBox } from "@/components/shared/output-box";
-import { useTranslate } from "@/hooks/use-translate";
+import { callTranslateStream } from "@/lib/api";
 import { useAppStore } from "@/stores/app-store";
 import { toast } from "sonner";
 
@@ -20,24 +20,72 @@ export function TranslateCard() {
   const [useRag, setUseRag] = useState(true);
   const [output, setOutput] = useState("");
   const [meta, setMeta] = useState<{ fromTm?: boolean; memoryTerms?: number; tmRefs?: unknown[] }>({});
+  const [streaming, setStreaming] = useState(false);
 
-  const translate = useTranslate();
+  const abortRef = useRef<AbortController | null>(null);
   const { selectedTranslateKbs } = useAppStore();
 
   const handleTranslate = async () => {
-    if (!text.trim()) { toast.error("请输入翻译文本"); return; }
+    if (streaming) {
+      abortRef.current?.abort();
+      setStreaming(false);
+      return;
+    }
+    if (!text.trim()) {
+      toast.error("请输入翻译文本");
+      return;
+    }
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setStreaming(true);
+    setOutput("");
+    setMeta({});
+
     try {
-      const result = await translate.mutateAsync({
-        text: text.trim(), use_tm: useTm, use_rag: useRag,
-        kb_ids: useRag ? selectedTranslateKbs : [],
-        book_title: bookTitle.trim() || undefined, task: "paragraph_translate",
-      });
-      if (result.success && result.translation) {
+      const result = await callTranslateStream(
+        {
+          text: text.trim(),
+          use_tm: useTm,
+          use_rag: useRag,
+          kb_ids: useRag ? selectedTranslateKbs : [],
+          book_title: bookTitle.trim() || undefined,
+          task: "paragraph_translate",
+        },
+        (chunk) => setOutput((prev) => prev + chunk),
+        ctrl.signal,
+      );
+      if (result?.success && result.translation) {
+        // 用最终翻译覆盖（含后处理结果，可能与流式累计文本略有差异）
         setOutput(result.translation);
-        setMeta({ fromTm: result.from_tm, memoryTerms: result.memory_terms, tmRefs: result.tm_references });
+        setMeta({
+          fromTm: result.from_tm,
+          memoryTerms: result.memory_terms,
+        });
         toast.success(result.from_tm ? "翻译记忆命中" : "翻译完成");
-      } else toast.error(result.error || "翻译失败");
-    } catch (e) { toast.error("网络错误: " + (e as Error).message); }
+      } else if (result && !result.success) {
+        toast.error((result as { error?: string }).error || "翻译失败");
+      }
+    } catch (e) {
+      if (ctrl.signal.aborted) {
+        toast.info("已停止翻译");
+      } else {
+        toast.error("网络错误: " + (e as Error).message);
+      }
+    } finally {
+      setStreaming(false);
+      abortRef.current = null;
+    }
+  };
+
+  const handleClear = () => {
+    if (streaming) {
+      abortRef.current?.abort();
+      setStreaming(false);
+    }
+    setOutput("");
+    setText("");
+    setMeta({});
   };
 
   return (
@@ -70,8 +118,10 @@ export function TranslateCard() {
           </div>
         </div>
         <div className="flex gap-3">
-          <ShinyButton onClick={handleTranslate} className="flex-1">{translate.isPending ? "翻译中..." : "翻译"}</ShinyButton>
-          <Button variant="outline" onClick={() => { setOutput(""); setText(""); setMeta({}); }}>清空</Button>
+          <ShinyButton onClick={handleTranslate} className="flex-1">
+            {streaming ? "停止" : "翻译"}
+          </ShinyButton>
+          <Button variant="outline" onClick={handleClear}>清空</Button>
         </div>
         {output && <OutputBox content={output} />}
       </CardContent>

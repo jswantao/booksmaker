@@ -288,3 +288,105 @@ export interface KnowledgeStatusResponse {
   history?: unknown[];
   epub?: unknown[];
 }
+
+// ---- Training ----
+export interface LossPoint {
+  step: number;
+  loss: number;
+  epoch: number;
+}
+
+export interface TrainingStatusResponse {
+  success: boolean;
+  running: boolean;
+  started_at: string | null;
+  progress: number;
+  step: number;
+  total_steps: number;
+  loss: number | null;
+  current_epoch: number;
+  total_epochs: number;
+  config: Record<string, unknown>;
+  error: string | null;
+  gpu_memory_used: number | null;
+  gpu_memory_reserved: number | null;
+  system_ram_used: number | null;
+  training_speed: number | null;
+  phase: TrainingPhase;
+  loss_history: LossPoint[];
+}
+
+export type TrainingPhase =
+  | "idle"
+  | "downloading"
+  | "loading_data"
+  | "loading_model"
+  | "training"
+  | "evaluating"
+  | "saving"
+  | "complete"
+  | "error";
+
+export interface TrainingDataStatus {
+  success: boolean;
+  tm_entries: number;
+  shared_terms: number;
+  train_samples: number;
+  memory_books: Array<{ name: string; terms: number; chunks: number }>;
+  ready: boolean;
+}
+
+export interface TrainedModel {
+  name: string;
+  path: string;
+  base_model: string;
+  description: string;
+  type?: string;
+}
+
+export interface TrainingHistoryRun {
+  id: string;
+  started_at: string;
+  finished_at: string;
+  base_model: string;
+  epochs: number;
+  final_loss: number | null;
+  total_steps: number;
+  duration_seconds: number;
+  status: "completed" | "failed";
+  output_dir: string;
+}
+
+export interface MergeRequest {
+  lora_path: string;
+  base_model?: string;
+  output_name: string;
+  strategy?: string;
+}
+
+export interface MergeStatusResponse {
+  success: boolean;
+  running: boolean;
+  log_lines: string[];
+  error: string | null;
+  done: boolean;
+}
+
+export interface TrainingEnvCheck {
+  success: boolean;
+  deps: Record<string, string>;
+  all_ok: boolean;
+  gpu_available: boolean;
+  gpu_info: string;
+  python: string;
+  hint: string | null;
+  cached_models: string[];
+  cache_dir: string;
+}
+
+export interface AvailableModelsResponse {
+  recommended: { id: string; label: string }[];
+  cached: { id: string; path: string; source: string }[];
+  merged: { id: string; path: string; name: string; base_model?: string; description?: string }[];
+  lora_adapters: { id: string; path: string; name: string }[];
+}

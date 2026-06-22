@@ -115,3 +115,61 @@ def migrate_legacy_knowledge():
             kb_manager.assign_kb_to_agent(name, kb["id"], is_default=(name == mapping["primary"]))
         kb_manager.update_document_count(kb["id"])
         print(f"[Migration] Created KB '{kb['name']}' from '{collection_name}' ({doc_count} docs)")
+
+
+# ---------------------------------------------------------------------------
+# LangChain integration: VectorStore wrappers
+# ---------------------------------------------------------------------------
+def get_langchain_vectorstore(collection_name: str):
+    """Return a langchain-chroma Chroma VectorStore wrapping the named collection.
+
+    Uses QoderWorkEmbeddings (our LangChain Embeddings adapter) so that
+    LCEL chains and retrievers can query our ChromaDB collections directly.
+    Returns None if the collection does not exist or is empty.
+    """
+    try:
+        from langchain_chroma import Chroma
+        from langchain_adapters.embeddings import QoderWorkEmbeddings
+
+        col = chroma_client.get_collection(collection_name)
+        if col.count() == 0:
+            return None
+
+        return Chroma(
+            collection_name=collection_name,
+            embedding_function=QoderWorkEmbeddings(),
+        )
+    except Exception as e:
+        print(f"[LCEL] VectorStore for '{collection_name}' failed: {e}")
+        return None
+
+
+def add_documents_lcel(collection_name: str, texts: List[str],
+                       metadatas: Optional[List[Dict]] = None) -> List[str]:
+    """Add documents via langchain-chroma Chroma.add_texts() with pre-computed embeddings.
+
+    This is an alternative to add_to_knowledge() that goes through the LangChain
+    VectorStore API. Both paths produce identical results in ChromaDB.
+    """
+    if user_api_config.get("embedding_provider") != "bge" and not user_api_config.get("api_key"):
+        raise ConfigError("请先配置API密钥")
+
+    vectorstore = get_langchain_vectorstore(collection_name)
+    if vectorstore is None:
+        # Collection doesn't exist yet — create via raw ChromaDB first
+        get_collection(collection_name)
+        vectorstore = get_langchain_vectorstore(collection_name)
+
+    ids = [hashlib.md5(t.encode()).hexdigest()[:12] for t in texts]
+    embeddings = EmbeddingManager().embed(texts, is_query=False)
+
+    if metadatas is None:
+        metadatas = [{"source": "user_upload"} for _ in texts]
+
+    vectorstore.add_texts(
+        texts=texts,
+        metadatas=metadatas,
+        ids=ids,
+        embeddings=embeddings,
+    )
+    return ids

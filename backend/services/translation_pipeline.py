@@ -9,10 +9,9 @@ from typing import List, Dict, Optional
 from pathlib import Path
 
 from services.model_router import model_router
-from services.hybrid_search import hybrid_query_multiple
 from services.memory_bank_manager import memory_bank_manager
-from model_providers import LLMManager
-from agents import get_agent_by_task
+from agents_lcel.chains import build_translate_runnable
+from agents_lcel.postprocess import get_cleaner
 
 class TranslationPipeline:
     """Concise, controllable pipeline"""
@@ -30,34 +29,35 @@ class TranslationPipeline:
     def pause(self): self._paused = True
     def resume(self): self._paused = False
 
-    def _search_kb(self, query: str, group: str = None, chapter: str = None):
-        if not self.kb_ids: return []
-        return hybrid_query_multiple(self.kb_ids, query, group=group, chapter=chapter, top_k=2, score_threshold=0.35)
-
     def translate_chunk(self, text: str, group: str = None, chapter: str = None) -> str:
         if self._paused: raise RuntimeError("paused")
-        # KB retrieval: must use only relevant group/chapter content
-        kb_hits = self._search_kb(text[:300], group=group, chapter=chapter)
-        agent = get_agent_by_task(self.task)
-        if agent is None:
-            raise RuntimeError(f"Unknown task: {self.task}")
-        terms = self.memory.get_terminology()
-        terms_text = " | ".join(f"{en}→{zh}" for en,zh in list(terms.items())[:12]) if terms else "(无)"
-        ctx_sum = self.memory.build_context_prompt(400)
-        sys = agent.build_system_prompt(dynamic_terms=terms_text, context_summary=ctx_sum)
-        messages = [{"role":"system","content":sys}]
-        if kb_hits:
-            snip = "\n".join(h["document"][:220] for h in kb_hits[:2])
-            messages.append({"role":"system","content":f"参考:{snip}"})
-        messages.append({"role":"user","content":text})
         route = model_router.resolve_provider(self.task)
-        gen = model_router.get_generation_kwargs(self.task)
-        llm = LLMManager()
         try:
-            raw = llm.chat(messages, task="translate", **gen)
+            chain = build_translate_runnable(
+                task=self.task,
+                source_text=text,
+                book_title=self.book_title,
+                kb_ids=self.kb_ids or None,
+                group=group or "",
+                chapter=chapter or "",
+                use_tm=True,
+                use_rag=bool(self.kb_ids),
+                model_name=route.get("model", ""),
+            )
+            raw = chain.invoke({"input": text})
         except Exception:
-            raw = llm.chat(messages, task="default", **gen)
-        out = agent.process_response(raw)
+            # Fallback: retry with default task if specific task fails
+            chain = build_translate_runnable(
+                task="paragraph_translate",
+                source_text=text,
+                book_title=self.book_title,
+                kb_ids=self.kb_ids or None,
+                group=group or "",
+                chapter=chapter or "",
+                model_name=route.get("model", ""),
+            )
+            raw = chain.invoke({"input": text})
+        out = get_cleaner(self.task)(raw)
         # Automatic Memory Base Auto-Construction
         if self.book_title:
             self.memory.auto_build_from_translation(text, out)

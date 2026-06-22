@@ -5,8 +5,7 @@ from models.schemas import (
     CreateKBRequest, UpdateKBRequest,
     CreateGroupRequest, UpdateGroupRequest,
 )
-from agents import get_agent_by_task
-from model_providers import LLMManager
+from agents_lcel.chains import build_chain_for_task
 from services.model_router import model_router
 from services.knowledge_service import add_to_knowledge
 from services.hybrid_search import hybrid_query_multiple
@@ -218,21 +217,16 @@ async def build_kb(req: KBBuildRequest):
     Build structured knowledge base from externally provided articles
     Reference Dify's hybrid index model
     """
-    agent = get_agent_by_task("kb_build")
-    if agent is None:
-        return {"success": False, "error": "KBBuilder Agent未找到"}
     route = model_router.resolve_provider("kb_build", None if req.provider=="auto" else req.provider)
-    gen_kwargs = model_router.get_generation_kwargs("kb_build")
 
     built = 0
     for article in req.articles:
-        messages = [
-            {"role": "system", "content": agent.system_prompt},
-            {"role": "user", "content": article[:4000]}
-        ]
         try:
-            llm = LLMManager()
-            out = llm.chat(messages, task="kb_build", **gen_kwargs)
+            chain = build_chain_for_task(
+                "kb_build",
+                model_name=route.get("model", ""),
+            )
+            out = await chain.ainvoke({"input": article[:4000]})
         except Exception:
             # fallback simple chunking
             out = json.dumps([{"text": article[i:i+400], "group": req.group or "default", "chapter": req.chapter or "", "keywords": []} for i in range(0, len(article), 400)])

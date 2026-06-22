@@ -15,6 +15,8 @@ from services.embedding_service import sync_embedding_manager
 from core.dependencies import sync_llm_manager
 from services.knowledge_service import migrate_legacy_knowledge
 from api import api_router
+from model_providers import LLMManager
+import threading
 
 
 def create_app() -> FastAPI:
@@ -57,10 +59,31 @@ def create_app() -> FastAPI:
     tm_instance.chroma_client = chroma_client
     kb_manager.chroma_client = chroma_client
 
-    # 启动时同步管理器 + 迁移
-    sync_embedding_manager()
-    sync_llm_manager()
-    migrate_legacy_knowledge()
+    # 后台初始化：管理器配置 + 知识迁移 + 模型预加载（不阻塞服务启动）
+    def _startup_init():
+        try:
+            sync_embedding_manager()
+        except Exception as e:
+            print(f"[启动] 嵌入模型: {e}")
+        try:
+            sync_llm_manager()
+        except Exception as e:
+            print(f"[启动] LLM: {e}")
+        try:
+            migrate_legacy_knowledge()
+        except Exception:
+            pass
+        # 预加载默认模型权重
+        try:
+            provider = LLMManager().get_provider("default")
+            if (provider and hasattr(provider, '_ensure_model_loaded')
+                    and getattr(provider, 'load_status', None) != 'ready'):
+                print(f"[启动预加载] 开始加载: {provider.model_name}")
+                provider._ensure_model_loaded()
+        except Exception:
+            pass
+
+    threading.Thread(target=_startup_init, daemon=True, name="startup-init").start()
 
     return app
 

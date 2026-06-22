@@ -105,15 +105,17 @@ export function PipelineTab() {
                 ))}
                 {(!kbList?.kbs || kbList.kbs.length === 0) && <p className="text-xs text-muted-foreground p-2">暂无知识库</p>}
               </div></div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div><span className="text-sm font-medium">记忆库路径</span><Input value={memoryPath} onChange={(e) => setMemoryPath(e.target.value)} className="mt-1 text-xs" /></div>
               <div><span className="text-sm font-medium">自动保存间隔</span><Input type="number" value={autoSave} onChange={(e) => setAutoSave(Number(e.target.value))} min={1} max={50} className="mt-1" /></div>
             </div>
-            <div className="flex gap-2 flex-wrap">
-              <ShinyButton onClick={handleRun}>{run.isPending ? "启动中..." : "开始翻译"}</ShinyButton>
-              <Button variant="outline" onClick={handlePause}><Pause className="h-4 w-4 mr-1" />暂停</Button>
-              <Button variant="outline" onClick={handleResume}><Play className="h-4 w-4 mr-1" />恢复</Button>
-              <Button variant="outline" onClick={handleStitch}>缝合章节</Button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <ShinyButton onClick={handleRun} className="sm:w-auto w-full">{run.isPending ? "启动中..." : "开始翻译"}</ShinyButton>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handlePause} className="flex-1"><Pause className="h-4 w-4 mr-1" />暂停</Button>
+                <Button variant="outline" onClick={handleResume} className="flex-1"><Play className="h-4 w-4 mr-1" />恢复</Button>
+                <Button variant="outline" onClick={handleStitch} className="flex-1">缝合章节</Button>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -10,6 +10,7 @@ from functools import lru_cache
 from typing import List, Optional, Callable, Tuple
 
 from utils.cuda import cleanup_vram
+from config import MODELS_CACHE_DIR
 
 
 # ==================== 异常定义 ====================
@@ -221,20 +222,20 @@ class BGEEmbeddingProvider(EmbeddingProvider):
     }
 
     def __init__(self, model_id: str = "BAAI/bge-base-zh-v1.5", device: str = None,
-                 cache_dir: str = "./models", download_source: str = "huggingface",
+                 cache_dir: str = None, download_source: str = "huggingface",
                  config: Optional[EmbeddingConfig] = None):
         """
         Args:
             model_id: 模型 ID（Hugging Face 格式）
             device: 设备，None=自动检测，'cpu'/'cuda'/'cuda:0'
-            cache_dir: 模型缓存根目录
+            cache_dir: 模型缓存根目录（默认使用 model_cache/）
             download_source: 下载源 "huggingface" | "modelscope"
             config: 嵌入配置
         """
         super().__init__(config)
         self._model_id = model_id
         self._device = device
-        self._cache_dir = cache_dir
+        self._cache_dir = cache_dir or MODELS_CACHE_DIR
         self._download_source = download_source
         self._model = None
         self._model_path: Optional[str] = None
@@ -601,7 +602,7 @@ class EmbeddingManager:
         return provider
 
     def configure_bge(self, model_id: str = "BAAI/bge-base-zh-v1.5", device: str = None,
-                      cache_dir: str = "./models", download_source: str = "huggingface",
+                      cache_dir: str = None, download_source: str = "huggingface",
                       config: Optional[EmbeddingConfig] = None):
         """配置为 BGE 本地嵌入模式"""
         provider = BGEEmbeddingProvider(model_id, device, cache_dir, download_source, config)
@@ -717,7 +718,7 @@ def create_embedding_provider(provider_type: str, **kwargs) -> EmbeddingProvider
         return BGEEmbeddingProvider(
             model_id=kwargs.get('model_id', 'BAAI/bge-base-zh-v1.5'),
             device=kwargs.get('device'),
-            cache_dir=kwargs.get('cache_dir', './models'),
+            cache_dir=kwargs.get('cache_dir'),
             download_source=kwargs.get('download_source', 'huggingface'),
             config=kwargs.get('config')
         )

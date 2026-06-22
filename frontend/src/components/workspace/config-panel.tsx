@@ -86,7 +86,7 @@ export function ConfigPanel() {
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="openai">OpenAI API</SelectItem>
-                  <SelectItem value="local">本地模型 (Qwen)</SelectItem>
+                  <SelectItem value="local">本地模型</SelectItem>
                 </SelectContent>
               </Select>
               {isLocal && transStatus && (

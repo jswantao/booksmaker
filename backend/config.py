@@ -9,6 +9,10 @@ os.environ["ANONYMIZED_TELEMETRY"] = "False"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # 模型缓存目录 (与 backend/models/ Python 包区分，用 model_cache)
 MODELS_CACHE_DIR = str(PROJECT_ROOT / "model_cache")
+# 合并模型输出目录 (LoRA 合并后的完整模型)
+MERGED_MODELS_DIR = str(PROJECT_ROOT / "model_cache" / "merged")
+# 旧版合并模型目录 (向后兼容，逐步迁移)
+LEGACY_MODELS_DIR = str(PROJECT_ROOT / "models")
 
 # ============================================================
 # 锁定所有模型/缓存到项目目录，避免数据泄露到系统路径
@@ -27,6 +31,7 @@ os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 # 确保缓存目录存在
 Path(MODELS_CACHE_DIR).mkdir(parents=True, exist_ok=True)
+Path(MERGED_MODELS_DIR).mkdir(parents=True, exist_ok=True)
 
 class Config:
     CHROMA_DB_PATH = str(PROJECT_ROOT / "chroma_db")

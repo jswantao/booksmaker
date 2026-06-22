@@ -35,7 +35,7 @@ npm run dev
 ├── backend/                         # Python 后端 (FastAPI)
 │   ├── app.py                       # FastAPI 应用工厂 + 入口
 │   ├── config.py                    # 全局配置与环境变量
-│   ├── agents.py                    # Agent 定义 (4 个 Agent)
+│   ├── agents.py                    # Agent 定义 (4 个 Agent, legacy)
 │   ├── model_providers.py           # LLM 抽象层
 │   ├── embedding_providers.py       # 嵌入抽象层
 │   ├── requirements.txt             # Python 依赖
@@ -43,6 +43,11 @@ npm run dev
 │   ├── core/                        # 核心基础设施 (3 模块)
 │   ├── models/                      # Pydantic 数据模型
 │   ├── services/                    # 业务服务 (10 模块)
+│   ├── langchain_adapters/          # LangChain 适配器 (BaseChatModel/Embeddings)
+│   ├── agents_lcel/                 # LCEL Agent chains (prompts/tools/chains)
+│   ├── retrievers/                  # BM25 + Hybrid 检索器
+│   ├── observability/               # LangChain 回调日志
+│   ├── tests/                       # 回归测试
 │   └── utils/                       # 工具
 │
 ├── frontend/                        # Next.js 前端 (独立项目)
@@ -53,6 +58,8 @@ npm run dev
 │   ├── src/stores/                  # Zustand 状态
 │   └── src/types/                   # TS 类型定义
 │
+├── docs/                            # 文档 (LANGCHAIN_MIGRATION.md)
+├── logs/                            # LangChain 事件日志
 ├── data/                            # 持久化数据库
 ├── chroma_db/                       # ChromaDB 向量库
 ├── uploads/                         # 文件上传
@@ -70,6 +77,7 @@ npm run dev
 | 记忆库   | JSON (原子写入 + 自动备份)                 | 术语公约 + 进度持久化         |
 | 翻译记忆 | SQLite + ChromaDB 双存                     | 精确匹配 + 向量相似度         |
 | 量化     | bitsandbytes 4-bit NF4                     | 降低显存占用                  |
+| LangChain| langchain-core + langchain-chroma + rank-bm25 | LCEL Agent chains + 混合检索 |
 | 下载     | HuggingFace / ModelScope 魔搭社区          | 模型下载（国内加速）          |
 | EPUB     | ebooklib                                   |                               |
 | 前端     | 原生 HTML/CSS/JS (ES Module)               | SPA 三标签页                  |

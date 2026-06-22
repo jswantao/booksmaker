@@ -1,0 +1,22 @@
+{
+  "history-translator": {
+    "name": "history-translator",
+    "display_name": "专业历史著作翻译模型",
+    "path": "G:\\Desktop\\电子书翻译\\models\\history-translator-01",
+    "base_model": "G:\\Desktop\\电子书翻译\\model_cache\\.ms\\Tencent-Hunyuan\\Hy-MT2-1.8B",
+    "lora_source": "G:\\Desktop\\电子书翻译\\lora_output\\checkpoint-20",
+    "version": "1.0.0",
+    "created_at": "2026-06-21T23:24:04.089420",
+    "file_size_mb": 4461.37,
+    "parameter_count_b": 1.79,
+    "tags": [
+      "translation",
+      "history"
+    ],
+    "languages": [
+      "en",
+      "zh"
+    ],
+    "active": true
+  }
+}
